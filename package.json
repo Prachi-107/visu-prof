@@ -1,0 +1,146 @@
+{
+  "name": "nntrainer-visualizer",
+  "displayName": "NNTrainer Visualizer",
+  "description": "Interactive flow graph visualizer for NNTrainer .ini model files with .bin weight inspection",
+  "version": "1.0.0",
+  "publisher": "nntrainer",
+  "engines": { "vscode": "^1.74.0" },
+  "categories": ["Visualization", "Machine Learning"],
+
+  "activationEvents": [
+    "onCommand:nntrainer.visualize",
+    "onCommand:nntrainer.visualizeFromExplorer",
+    "onView:nntrainerSidebar",
+    "workspaceContains:**/*.ini"
+  ],
+
+  "main": "./src/extension.js",
+
+  "contributes": {
+
+    "commands": [
+      {
+        "command": "nntrainer.visualize",
+        "title": "NNTrainer: Visualize Model",
+        "icon": "$(circuit-board)"
+      },
+      {
+        "command": "nntrainer.visualizeFromExplorer",
+        "title": "Open in NNTrainer Visualizer",
+        "icon": "$(circuit-board)"
+      },
+      {
+        "command": "nntrainer.openProfiler",
+        "title": "NNTrainer: Run Profiler",
+        "icon": "$(pulse)"
+      },
+      {
+        "command": "nntrainer.refreshSidebar",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "nntrainer.openFromSidebar",
+        "title": "Open Model",
+        "icon": "$(go-to-file)"
+      }
+    ],
+
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "nntrainer-panel",
+          "title": "NNTrainer Visualizer",
+          "icon": "$(circuit-board)"
+        }
+      ]
+    },
+
+    "views": {
+      "nntrainer-panel": [
+        {
+          "id": "nntrainerSidebar",
+          "name": "Models in Workspace",
+          "icon": "$(circuit-board)"
+        }
+      ]
+    },
+
+    "menus": {
+      "explorer/context": [
+        {
+          "when": "resourceExtname == .ini",
+          "command": "nntrainer.visualizeFromExplorer",
+          "group": "navigation@1"
+        }
+      ],
+      "editor/title": [
+        {
+          "when": "resourceExtname == .ini",
+          "command": "nntrainer.visualize",
+          "group": "navigation"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "nntrainer.refreshSidebar",
+          "when": "view == nntrainerSidebar",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "nntrainer.openFromSidebar",
+          "when": "view == nntrainerSidebar && viewItem == iniFile",
+          "group": "inline"
+        }
+      ]
+    },
+
+    "keybindings": [
+      {
+        "command": "nntrainer.visualize",
+        "key": "ctrl+shift+v",
+        "mac": "cmd+shift+v",
+        "when": "resourceExtname == .ini"
+      },
+      {
+        "command": "nntrainer.openProfiler",
+        "key": "ctrl+shift+p",
+        "mac": "cmd+shift+p",
+        "when": "resourceExtname == .ini"
+      }
+    ],
+
+    "configuration": {
+      "title": "NNTrainer",
+      "properties": {
+        "nntrainer.ssh.host": {
+          "type": "string",
+          "default": "test@107.99.46.57",
+          "description": "SSH host for the Ubuntu server running NNTrainer (user@host)"
+        },
+        "nntrainer.ssh.keyPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to SSH private key (leave blank to use default ~/.ssh/id_rsa)"
+        },
+        "nntrainer.ssh.remoteDir": {
+          "type": "string",
+          "default": "/storage_data/Snap/nntrainer",
+          "description": "Absolute path to the NNTrainer root on the remote server"
+        },
+        "nntrainer.ssh.buildDir": {
+          "type": "string",
+          "default": "build",
+          "description": "Build subdirectory relative to remoteDir (e.g. build)"
+        },
+        "nntrainer.ssh.appBinary": {
+          "type": "string",
+          "default": "",
+          "description": "Relative path (from buildDir) to your NNTrainer application binary. E.g. Applications/YourApp/your_app"
+        }
+      }
+    }
+  }
+}
