@@ -4,14 +4,13 @@
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy"
   content="default-src 'none';
-           script-src 'nonce-${nonce}' https://cdnjs.cloudflare.com;
+           script-src 'nonce-PROFILER_NONCE' https://cdnjs.cloudflare.com;
            style-src 'unsafe-inline';
-           img-src data:;">
+           img-src data: vscode-resource:;">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NNTrainer Profiler</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
   :root {
     --bg:      #060c18;
     --surface: #0a1220;
@@ -25,270 +24,139 @@
     --mem:     #34d399;
     --hot:     #ef4444;
     --warn:    #f59e0b;
-    --font:    'JetBrains Mono', 'Cascadia Code', monospace;
+    --font:    'JetBrains Mono', monospace;
   }
+  body { background:var(--bg); color:var(--text); font-family:var(--font); height:100vh; display:flex; flex-direction:column; overflow:hidden; font-size:11px; }
 
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--font);
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    font-size: 11px;
-  }
+  #topbar { height:44px; background:var(--surface); border-bottom:1px solid var(--border); display:flex; align-items:center; padding:0 16px; gap:12px; flex-shrink:0; }
+  .dot { width:7px; height:7px; border-radius:50%; background:var(--accent); box-shadow:0 0 8px var(--accent); }
+  .title { font-size:13px; color:var(--accent); font-weight:700; letter-spacing:0.5px; }
+  .sep { color:var(--border); }
+  .meta { font-size:10px; color:var(--muted); }
+  .badge { font-size:9px; padding:2px 8px; border-radius:3px; font-weight:700; }
+  .badge-ok  { background:#34d39918; border:1px solid #34d39944; color:#34d399; }
+  .badge-err { background:#ef444418; border:1px solid #ef444444; color:#ef4444; }
+  .badge-cpu { background:#38bdf818; border:1px solid #38bdf844; color:#38bdf8; }
+  .badge-gpu { background:#4ade8018; border:1px solid #4ade8044; color:#4ade80; }
+  .right { margin-left:auto; display:flex; gap:6px; align-items:center; }
+  .btn { background:none; border:1px solid var(--border); color:var(--muted); cursor:pointer; padding:3px 10px; border-radius:4px; font-size:9px; font-family:var(--font); font-weight:700; letter-spacing:0.5px; transition:all 0.15s; }
+  .btn:hover { border-color:var(--accent); color:var(--accent); }
+  .btn-load { border-color:#34d39966; color:#34d399; background:#34d39910; }
+  .btn-load:hover { background:#34d39922; }
 
-  /* ── Topbar ── */
-  #topbar {
-    height: 44px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    padding: 0 16px;
-    gap: 12px;
-    flex-shrink: 0;
-  }
-  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
-  .title { font-size: 13px; color: var(--accent); font-weight: 700; letter-spacing: 0.5px; }
-  .sep { color: var(--border); }
-  .meta { font-size: 10px; color: var(--muted); }
-  .badge {
-    font-size: 9px; padding: 2px 8px; border-radius: 3px; font-weight: 700;
-  }
-  .badge-live   { background: #34d39918; border: 1px solid #34d39944; color: #34d399; }
-  .badge-done   { background: #818cf818; border: 1px solid #818cf844; color: #818cf8; }
-  .badge-err    { background: #ef444418; border: 1px solid #ef444444; color: #ef4444; }
-  .badge-cpu    { background: #38bdf818; border: 1px solid #38bdf844; color: #38bdf8; }
-  .badge-gpu    { background: #4ade8018; border: 1px solid #4ade8044; color: #4ade80; }
-  .right { margin-left: auto; display: flex; gap: 6px; align-items: center; }
-  .btn {
-    background: none; border: 1px solid var(--border); color: var(--muted);
-    cursor: pointer; padding: 3px 10px; border-radius: 4px;
-    font-size: 9px; font-family: var(--font); font-weight: 700;
-    letter-spacing: 0.5px; transition: all 0.15s;
-  }
-  .btn:hover { border-color: var(--accent); color: var(--accent); }
-  .btn-danger { border-color: #ef444466; color: #ef4444; }
-  .btn-danger:hover { background: #ef444418; }
-  .btn-run { border-color: #34d39966; color: #34d399; background: #34d39910; }
-  .btn-run:hover { background: #34d39922; }
-  .btn-disabled { opacity: 0.4; pointer-events: none; }
+  #loading { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; padding:40px; }
+  .big-title { font-size:22px; font-weight:700; color:var(--text); }
+  .how-to { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:20px 24px; max-width:500px; width:100%; }
+  .how-to-title { font-size:9px; font-weight:700; letter-spacing:2px; color:var(--muted); margin-bottom:14px; }
+  .how-to-step { display:flex; gap:10px; margin-bottom:12px; align-items:flex-start; }
+  .step-num { width:18px; height:18px; border-radius:50%; background:var(--dim); border:1px solid var(--border); font-size:9px; font-weight:700; color:var(--accent); display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px; }
+  .step-text { font-size:10px; color:var(--muted); line-height:1.7; }
+  .step-code { display:block; margin-top:5px; background:#040810; border:1px solid var(--border); border-radius:4px; padding:6px 10px; font-size:9px; color:#a0c8e8; line-height:1.9; white-space:pre; }
 
-  /* ── Loading / Empty ── */
-  #loading {
-    flex: 1; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 14px;
-  }
-  .big-title { font-size: 24px; font-weight: 700; color: var(--text); }
-  .sub { font-size: 11px; color: var(--muted); text-align: center; line-height: 2; }
-  .spinner {
-    width: 24px; height: 24px;
-    border: 2px solid var(--border); border-top-color: var(--accent);
-    border-radius: 50%; animation: spin 0.8s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
+  #main { flex:1; display:none; overflow:hidden; flex-direction:column; }
+  #main.visible { display:flex; }
 
-  /* ── SSH Log strip ── */
-  #log-strip {
-    height: 0; overflow: hidden; background: #040810;
-    border-top: 1px solid var(--border);
-    font-size: 9px; color: #3a5070; font-family: var(--font);
-    flex-shrink: 0; transition: height 0.2s;
-    display: flex; flex-direction: column;
-  }
-  #log-strip.open { height: 100px; }
-  #log-lines { flex: 1; overflow-y: auto; padding: 6px 12px; line-height: 1.8; }
-  .log-ok   { color: #34d399; }
-  .log-err  { color: #ef4444; }
-  .log-info { color: #38bdf8; }
-  .log-parse{ color: #a78bfa; }
+  #statsbar { background:var(--surface); border-bottom:1px solid var(--border); display:flex; align-items:stretch; flex-shrink:0; }
+  .stat-cell { padding:6px 16px; border-right:1px solid var(--border); display:flex; flex-direction:column; gap:2px; }
+  .stat-val { font-size:16px; font-weight:700; font-family:var(--font); }
+  .stat-key { font-size:8px; color:var(--muted); letter-spacing:1.5px; }
 
-  /* ── Main layout ── */
-  #main { flex: 1; display: none; overflow: hidden; flex-direction: column; }
-  #main.visible { display: flex; }
+  #panels { flex:1; overflow-y:auto; display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--border); }
+  .panel { background:var(--bg); display:flex; flex-direction:column; overflow:hidden; }
+  .panel.wide { grid-column:1/-1; }
+  .panel-header { background:var(--surface); padding:7px 14px; display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--border); flex-shrink:0; }
+  .panel-title { font-size:9px; font-weight:700; letter-spacing:2px; color:var(--muted); }
+  .panel-body { flex:1; padding:10px 14px; overflow-y:auto; }
+  .legend { display:flex; gap:10px; margin-left:auto; }
+  .legend-item { display:flex; align-items:center; gap:4px; font-size:8px; color:var(--muted); }
+  .legend-swatch { width:10px; height:6px; border-radius:1px; }
 
-  /* ── Stats bar ── */
-  #statsbar {
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    display: flex; align-items: stretch; flex-shrink: 0;
-  }
-  .stat-cell {
-    padding: 6px 16px; border-right: 1px solid var(--border);
-    display: flex; flex-direction: column; gap: 2px;
-  }
-  .stat-val { font-size: 16px; font-weight: 700; font-family: var(--font); }
-  .stat-key { font-size: 8px; color: var(--muted); letter-spacing: 1.5px; }
+  .tl-row { display:flex; align-items:center; gap:6px; margin-bottom:5px; }
+  .tl-label { font-size:8px; color:var(--muted); width:130px; flex-shrink:0; text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; }
+  .tl-label:hover { color:var(--accent); }
+  .tl-track { flex:1; height:14px; background:var(--dim); border-radius:2px; position:relative; overflow:hidden; }
+  .tl-fwd { position:absolute; top:0; left:0; height:100%; background:var(--fwd); border-radius:2px 0 0 2px; }
+  .tl-bwd { position:absolute; top:0; height:100%; background:var(--bwd); opacity:0.7; border-radius:0 2px 2px 0; }
+  .tl-val { font-size:8px; color:var(--muted); width:46px; text-align:right; flex-shrink:0; }
 
-  /* ── Panel grid ── */
-  #panels {
-    flex: 1; overflow-y: auto; overflow-x: hidden;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: auto auto;
-    gap: 1px;
-    background: var(--border);
-  }
-  .panel {
-    background: var(--bg);
-    display: flex; flex-direction: column;
-    overflow: hidden;
-  }
-  .panel.wide { grid-column: 1 / -1; }
-  .panel-header {
-    background: var(--surface);
-    padding: 7px 14px;
-    display: flex; align-items: center; gap: 8px;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-  .panel-title { font-size: 9px; font-weight: 700; letter-spacing: 2px; color: var(--muted); }
-  .panel-body { flex: 1; padding: 10px 14px; overflow-y: auto; }
+  #mem-canvas-wrap { position:relative; height:160px; }
 
-  /* Legend pill */
-  .legend { display: flex; gap: 10px; margin-left: auto; }
-  .legend-item { display: flex; align-items: center; gap: 4px; font-size: 8px; color: var(--muted); }
-  .legend-swatch { width: 10px; height: 6px; border-radius: 1px; }
+  .fvb-group { margin-bottom:10px; }
+  .fvb-name  { font-size:9px; color:var(--text); margin-bottom:3px; }
+  .fvb-track { height:8px; background:var(--dim); border-radius:2px; overflow:hidden; margin-bottom:2px; }
+  .fvb-fill-fwd { height:100%; background:var(--fwd); border-radius:2px; }
+  .fvb-fill-bwd { height:100%; background:var(--bwd); opacity:0.7; border-radius:2px; }
+  .fvb-nums { display:flex; gap:8px; font-size:7px; color:var(--muted); }
 
-  /* ── PANEL 1: Execution timeline ── */
-  .tl-row { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
-  .tl-label {
-    font-size: 8px; color: var(--muted); width: 120px; flex-shrink: 0;
-    text-align: right; overflow: hidden; text-overflow: ellipsis;
-    white-space: nowrap; cursor: pointer;
-  }
-  .tl-label:hover { color: var(--accent); }
-  .tl-track {
-    flex: 1; height: 14px; background: var(--dim);
-    border-radius: 2px; position: relative; overflow: hidden;
-  }
-  .tl-fwd {
-    position: absolute; top: 0; left: 0; height: 100%;
-    background: var(--fwd); border-radius: 2px 0 0 2px;
-    transition: width 0.3s;
-  }
-  .tl-bwd {
-    position: absolute; top: 0; height: 100%;
-    background: var(--bwd); opacity: 0.7; border-radius: 0 2px 2px 0;
-    transition: width 0.3s, left 0.3s;
-  }
-  .tl-val { font-size: 8px; color: var(--muted); width: 42px; text-align: right; flex-shrink: 0; }
+  .op-table { width:100%; border-collapse:collapse; font-size:9px; }
+  .op-table th { color:var(--muted); text-align:left; padding:4px 8px; border-bottom:1px solid var(--border); font-weight:700; letter-spacing:0.5px; position:sticky; top:0; background:var(--bg); cursor:pointer; }
+  .op-table th:hover { color:var(--accent); }
+  .op-table th.sorted { color:var(--accent); }
+  .op-table td { padding:5px 8px; border-bottom:1px solid #0a1520; }
+  .op-table tr:hover td { background:#0d1826; }
+  .op-table tr.hot  td { border-left:2px solid var(--hot); }
+  .op-table tr.warm td { border-left:2px solid var(--warn); }
+  .c-fwd { color:var(--fwd); } .c-bwd { color:var(--bwd); } .c-mem { color:var(--mem); } .c-pct { color:var(--warn); }
 
-  /* ── PANEL 2: Memory chart ── */
-  #mem-canvas-wrap { position: relative; flex: 1; min-height: 140px; }
-  #mem-canvas { width: 100%; height: 100%; }
-
-  /* ── PANEL 3: Fwd vs Bwd comparison ── */
-  .fvb-group { margin-bottom: 10px; }
-  .fvb-name { font-size: 9px; color: var(--text); margin-bottom: 3px; }
-  .fvb-bars { display: flex; gap: 2px; align-items: center; }
-  .fvb-bar-wrap { flex: 1; display: flex; flex-direction: column; gap: 2px; }
-  .fvb-track { height: 8px; background: var(--dim); border-radius: 2px; overflow: hidden; }
-  .fvb-fill-fwd { height: 100%; background: var(--fwd); border-radius: 2px; transition: width 0.3s; }
-  .fvb-fill-bwd { height: 100%; background: var(--bwd); opacity: 0.7; border-radius: 2px; transition: width 0.3s; }
-  .fvb-labels { display: flex; gap: 6px; margin-top: 1px; }
-  .fvb-lbl { font-size: 7px; color: var(--muted); flex: 1; }
-
-  /* ── PANEL 4: Per-op table ── */
-  .op-table { width: 100%; border-collapse: collapse; font-size: 9px; }
-  .op-table th {
-    color: var(--muted); text-align: left; padding: 4px 8px;
-    border-bottom: 1px solid var(--border); font-weight: 700;
-    letter-spacing: 0.5px; position: sticky; top: 0;
-    background: var(--bg); cursor: pointer;
-  }
-  .op-table th:hover { color: var(--accent); }
-  .op-table th.sorted { color: var(--accent); }
-  .op-table td { padding: 5px 8px; border-bottom: 1px solid #0a1520; }
-  .op-table tr:hover td { background: #0d1826; }
-  .op-table tr.hot td { border-left: 2px solid var(--hot); }
-  .op-table tr.warm td { border-left: 2px solid var(--warn); }
-  .c-fwd  { color: var(--fwd); }
-  .c-bwd  { color: var(--bwd); }
-  .c-mem  { color: var(--mem); }
-  .c-pct  { color: var(--warn); }
-  .c-back { color: #ef4444; font-size: 8px; }
-
-  /* ── Statusbar ── */
-  #statusbar {
-    height: 22px; background: var(--surface);
-    border-top: 1px solid var(--border);
-    display: flex; align-items: center;
-    padding: 0 14px; gap: 14px;
-    font-size: 8px; color: var(--muted); flex-shrink: 0;
-  }
-  .status-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--muted); }
-  .status-dot.live { background: var(--mem); box-shadow: 0 0 5px var(--mem); animation: pulse 1.2s ease-in-out infinite; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  #statusbar { height:22px; background:var(--surface); border-top:1px solid var(--border); display:flex; align-items:center; padding:0 14px; gap:14px; font-size:8px; color:var(--muted); flex-shrink:0; }
 </style>
 </head>
 <body>
 
-<!-- ── Topbar ── -->
 <div id="topbar">
   <div class="dot"></div>
   <span class="title">NNTrainer Profiler</span>
-  <span class="sep">│</span>
-  <span class="meta" id="tb-model">No model loaded</span>
   <span class="sep" id="tb-sep" style="display:none">│</span>
-  <span class="meta" id="tb-iter" style="display:none"></span>
-  <span id="tb-status-badge" style="display:none"></span>
+  <span class="meta" id="tb-model"></span>
+  <span id="tb-badge" style="display:none"></span>
   <div class="right">
-    <span class="badge badge-cpu" id="tb-backend-cpu" style="display:none">⬡ CPU</span>
-    <span class="badge badge-gpu" id="tb-backend-gpu" style="display:none">▣ GPU</span>
-    <button class="btn" id="btn-toggle-log" onclick="toggleLog()">▼ Log</button>
-    <button class="btn btn-danger btn-disabled" id="btn-stop" onclick="stopRun()">■ Stop</button>
-    <button class="btn btn-run" id="btn-run" onclick="startRun()">▶ Run Profiler</button>
+    <span class="badge badge-cpu" id="tb-cpu" style="display:none">⬡ CPU</span>
+    <span class="badge badge-gpu" id="tb-gpu" style="display:none">▣ GPU</span>
+    <button class="btn btn-load" id="btn-load">📂 Load Profile…</button>
   </div>
 </div>
 
-<!-- ── Loading screen ── -->
 <div id="loading">
   <div class="big-title">NNTrainer Profiler</div>
-  <div class="sub">
-    Opens your model on the Ubuntu server via SSH<br>
-    and streams per-layer timing + memory live.
+  <div class="how-to">
+    <div class="how-to-title">HOW TO GENERATE A PROFILE FILE</div>
+    <div class="how-to-step">
+      <div class="step-num">1</div>
+      <div class="step-text">Build NNTrainer with profiling on your Ubuntu server:
+        <code class="step-code">cd /storage_data/Snap/nntrainer
+meson setup build --buildtype=release -Db_cpp_args="-DPROFILE"
+ninja -C build -j$(nproc)</code>
+      </div>
+    </div>
+    <div class="how-to-step">
+      <div class="step-num">2</div>
+      <div class="step-text">Run your model and save output to a file:
+        <code class="step-code">./build/Applications/mnist/mnist 2>&1 | tee mnist_profile.txt</code>
+      </div>
+    </div>
+    <div class="how-to-step">
+      <div class="step-num">3</div>
+      <div class="step-text">Copy the file to your Windows PC:
+        <code class="step-code">scp test@107.99.46.57:~/nntrainer/mnist_profile.txt C:\Users\You\Downloads\</code>
+      </div>
+    </div>
+    <div class="how-to-step">
+      <div class="step-num">4</div>
+      <div class="step-text">Click Load Profile and pick the .txt file.</div>
+    </div>
   </div>
-  <button class="btn btn-run" style="font-size:11px;padding:6px 18px;" onclick="startRun()">▶ Run Profiler</button>
+  <button class="btn btn-load" id="btn-load-main" style="font-size:11px;padding:8px 22px;">📂 Load Profile…</button>
 </div>
 
-<!-- ── SSH log strip ── -->
-<div id="log-strip">
-  <div id="log-lines"></div>
-</div>
-
-<!-- ── Main UI ── -->
 <div id="main">
-  <!-- Stats bar -->
   <div id="statsbar">
-    <div class="stat-cell">
-      <span class="stat-val" id="stat-fwd" style="color:var(--fwd)">—</span>
-      <span class="stat-key">TOTAL FWD</span>
-    </div>
-    <div class="stat-cell">
-      <span class="stat-val" id="stat-bwd" style="color:var(--bwd)">—</span>
-      <span class="stat-key">TOTAL BWD</span>
-    </div>
-    <div class="stat-cell">
-      <span class="stat-val" id="stat-mem" style="color:var(--mem)">—</span>
-      <span class="stat-key">PEAK MEM</span>
-    </div>
-    <div class="stat-cell">
-      <span class="stat-val" id="stat-tp" style="color:var(--warn)">—</span>
-      <span class="stat-key">SAMPLES/SEC</span>
-    </div>
-    <div class="stat-cell">
-      <span class="stat-val" id="stat-iter" style="color:var(--accent)">—</span>
-      <span class="stat-key">ITERATIONS</span>
-    </div>
+    <div class="stat-cell"><span class="stat-val" id="stat-fwd" style="color:var(--fwd)">—</span><span class="stat-key">TOTAL FWD</span></div>
+    <div class="stat-cell"><span class="stat-val" id="stat-bwd" style="color:var(--bwd)">—</span><span class="stat-key">TOTAL BWD</span></div>
+    <div class="stat-cell"><span class="stat-val" id="stat-mem" style="color:var(--mem)">—</span><span class="stat-key">PEAK MEM</span></div>
+    <div class="stat-cell"><span class="stat-val" id="stat-layers" style="color:var(--accent)">—</span><span class="stat-key">LAYERS</span></div>
+    <div class="stat-cell"><span class="stat-val" id="stat-iter" style="color:var(--warn)">—</span><span class="stat-key">ITERATIONS</span></div>
   </div>
-
-  <!-- 4-panel grid -->
   <div id="panels">
-
-    <!-- Panel 1: Execution Timeline (wide) -->
     <div class="panel wide">
       <div class="panel-header">
         <span class="panel-title">EXECUTION TIMELINE</span>
@@ -297,23 +165,17 @@
           <div class="legend-item"><div class="legend-swatch" style="background:var(--bwd);opacity:0.7"></div>backward</div>
         </div>
       </div>
-      <div class="panel-body" id="timeline-body" style="max-height:180px;"></div>
+      <div class="panel-body" id="timeline-body" style="max-height:200px;"></div>
     </div>
-
-    <!-- Panel 2: Memory over time -->
     <div class="panel">
       <div class="panel-header">
         <span class="panel-title">MEMORY OVER TIME</span>
-        <span style="font-size:8px;color:var(--muted);margin-left:auto;">CPU RAM · VRAM not tracked</span>
+        <span style="font-size:8px;color:var(--muted);margin-left:auto;">CPU RAM</span>
       </div>
-      <div class="panel-body" style="display:flex;flex-direction:column;padding:8px 10px;">
-        <div id="mem-canvas-wrap">
-          <canvas id="mem-canvas"></canvas>
-        </div>
+      <div class="panel-body" style="padding:8px 10px;">
+        <div id="mem-canvas-wrap"><canvas id="mem-canvas"></canvas></div>
       </div>
     </div>
-
-    <!-- Panel 3: Fwd vs Bwd -->
     <div class="panel">
       <div class="panel-header">
         <span class="panel-title">FORWARD vs BACKWARD</span>
@@ -324,452 +186,235 @@
       </div>
       <div class="panel-body" id="fvb-body" style="max-height:220px;"></div>
     </div>
-
-    <!-- Panel 4: Per-op breakdown (wide) -->
     <div class="panel wide">
       <div class="panel-header">
         <span class="panel-title">PER-OPERATION BREAKDOWN</span>
-        <span style="font-size:8px;color:var(--muted);margin-left:auto;">click header to sort · red = top bottleneck</span>
+        <span style="font-size:8px;color:var(--muted);margin-left:auto;">click header to sort · red = bottleneck</span>
       </div>
       <div class="panel-body" style="padding:0;max-height:220px;overflow-y:auto;">
-        <table class="op-table" id="op-table">
-          <thead>
-            <tr>
-              <th onclick="sortTable('name')">LAYER</th>
-              <th onclick="sortTable('fwd')" class="sorted">FWD ms</th>
-              <th onclick="sortTable('bwd')">BWD ms</th>
-              <th onclick="sortTable('mem')">PEAK MEM</th>
-              <th onclick="sortTable('pct')">% TOTAL</th>
-              <th onclick="sortTable('ratio')">BWD/FWD</th>
-              <th>BACKEND</th>
-            </tr>
-          </thead>
+        <table class="op-table">
+          <thead><tr>
+            <th onclick="sortTable('name')" data-key="name">LAYER</th>
+            <th onclick="sortTable('fwd')"  data-key="fwd" class="sorted">FWD ms</th>
+            <th onclick="sortTable('bwd')"  data-key="bwd">BWD ms</th>
+            <th onclick="sortTable('mem')"  data-key="mem">PEAK MEM</th>
+            <th onclick="sortTable('pct')"  data-key="pct">% TOTAL</th>
+            <th onclick="sortTable('ratio')"data-key="ratio">BWD/FWD</th>
+            <th>BACKEND</th>
+          </tr></thead>
           <tbody id="op-tbody"></tbody>
         </table>
       </div>
     </div>
-
   </div>
 </div>
 
-<!-- ── Statusbar ── -->
 <div id="statusbar">
-  <div class="status-dot" id="status-dot"></div>
-  <span id="status-text">Waiting for profiler run…</span>
-  <span style="margin-left:auto;color:var(--dim)">NNTrainer Profiler · v1.0</span>
+  <span id="status-text">Load a profile file to begin</span>
+  <span style="margin-left:auto;color:var(--dim)">NNTrainer Profiler</span>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-<script nonce="${nonce}">
+<script nonce="PROFILER_NONCE">
 const vscode = acquireVsCodeApi();
 
-// ═══════════════════════════════════════════════════════════════
-// STATE
-// ═══════════════════════════════════════════════════════════════
 const STATE = {
-  running: false,
-  layers: {},        // id → { name, fwd_ms, bwd_ms, mem_bytes, calls, backend }
-  memSeries: [],     // [{iter, bytes}]
-  totalFwd: 0,
-  totalBwd: 0,
-  peakMem: 0,
-  iterations: 0,
-  sortKey: 'fwd',
-  sortAsc: false,
-  modelName: '',
-  hasGPU: false,
-  hasCPU: false,
+  layers:{}, memSeries:[], totalFwd:0, totalBwd:0,
+  peakMem:0, iterations:0, sortKey:'fwd', sortAsc:false
 };
 
-// ═══════════════════════════════════════════════════════════════
-// MEMORY CHART  (Chart.js line)
-// ═══════════════════════════════════════════════════════════════
-const memCtx = document.getElementById('mem-canvas').getContext('2d');
-const memChart = new Chart(memCtx, {
-  type: 'line',
-  data: {
-    labels: [],
-    datasets: [{
-      label: 'Allocated (MB)',
-      data: [],
-      borderColor: '#34d399',
-      backgroundColor: '#34d39915',
-      borderWidth: 1.5,
-      fill: true,
-      tension: 0.3,
-      pointRadius: 0,
-    }, {
-      label: 'Peak line',
-      data: [],
-      borderColor: '#ef4444',
-      borderWidth: 1,
-      borderDash: [4, 4],
-      pointRadius: 0,
-      fill: false,
-      tension: 0,
-    }]
-  },
-  options: {
-    responsive: true,
-    maintainAspectRatio: false,
-    animation: false,
-    plugins: { legend: { display: false }, tooltip: {
-      callbacks: { label: ctx => `${ctx.raw.toFixed(1)} MB` }
-    }},
-    scales: {
-      x: { ticks: { color: '#4a6080', font: { size: 8 }, maxTicksLimit: 8 },
-           grid: { color: '#162035' } },
-      y: { ticks: { color: '#4a6080', font: { size: 8 },
-                    callback: v => v.toFixed(0) + ' MB' },
-           grid: { color: '#162035' }, beginAtZero: true }
+const memChart = new Chart(
+  document.getElementById('mem-canvas').getContext('2d'), {
+  type:'line',
+  data:{ labels:[], datasets:[
+    { label:'MB', data:[], borderColor:'#34d399', backgroundColor:'#34d39915', borderWidth:1.5, fill:true, tension:0.3, pointRadius:0 },
+    { label:'Peak', data:[], borderColor:'#ef4444', borderWidth:1, borderDash:[4,4], pointRadius:0, fill:false }
+  ]},
+  options:{
+    responsive:true, maintainAspectRatio:false, animation:false,
+    plugins:{ legend:{ display:false } },
+    scales:{
+      x:{ ticks:{ color:'#4a6080', font:{size:8}, maxTicksLimit:8 }, grid:{color:'#162035'} },
+      y:{ ticks:{ color:'#4a6080', font:{size:8}, callback:v=>v.toFixed(0)+' MB' }, grid:{color:'#162035'}, beginAtZero:true }
     }
   }
 });
 
-// ═══════════════════════════════════════════════════════════════
-// LOG STRIP
-// ═══════════════════════════════════════════════════════════════
-function log(msg, cls='') {
-  const el = document.createElement('div');
-  if (cls) el.className = cls;
-  el.textContent = msg;
-  const lines = document.getElementById('log-lines');
-  lines.appendChild(el);
-  lines.scrollTop = lines.scrollHeight;
+const BACKEND = {
+  CPU:{c:'#38bdf8',label:'CPU'}, GPU:{c:'#4ade80',label:'GPU'},
+  NPU:{c:'#fb923c',label:'NPU'}, AUTO:{c:'#a78bfa',label:'AUTO'}
+};
+
+function fmtBytes(b){
+  if(!b) return '—';
+  if(b>=1073741824) return (b/1073741824).toFixed(2)+' GB';
+  if(b>=1048576)    return (b/1048576).toFixed(1)+' MB';
+  if(b>=1024)       return (b/1024).toFixed(0)+' KB';
+  return b+' B';
 }
 
-function toggleLog() {
-  const strip = document.getElementById('log-strip');
-  const btn = document.getElementById('btn-toggle-log');
-  strip.classList.toggle('open');
-  btn.textContent = strip.classList.contains('open') ? '▲ Log' : '▼ Log';
+function getSorted(){
+  const arr=Object.values(STATE.layers), k=STATE.sortKey;
+  return arr.sort((a,b)=>{
+    if(k==='name') return STATE.sortAsc?a.name.localeCompare(b.name):b.name.localeCompare(a.name);
+    const map={fwd:'fwd_ms',bwd:'bwd_ms',mem:'mem_bytes',pct:'_total',ratio:'_ratio'};
+    const va = k==='pct'?(a.fwd_ms||0)+(a.bwd_ms||0) : k==='ratio'?(a.fwd_ms&&a.bwd_ms?a.bwd_ms/a.fwd_ms:0) : (a[map[k]]||0);
+    const vb = k==='pct'?(b.fwd_ms||0)+(b.bwd_ms||0) : k==='ratio'?(b.fwd_ms&&b.bwd_ms?b.bwd_ms/b.fwd_ms:0) : (b[map[k]]||0);
+    return STATE.sortAsc?va-vb:vb-va;
+  });
 }
 
-// ═══════════════════════════════════════════════════════════════
-// RUN / STOP
-// ═══════════════════════════════════════════════════════════════
-function startRun() {
-  vscode.postMessage({ type: 'PROFILER_RUN' });
-}
-function stopRun() {
-  vscode.postMessage({ type: 'PROFILER_STOP' });
+function sortTable(key){
+  STATE.sortAsc = STATE.sortKey===key ? !STATE.sortAsc : false;
+  STATE.sortKey = key;
+  document.querySelectorAll('.op-table th').forEach(t=>t.classList.remove('sorted'));
+  document.querySelector(`.op-table th[data-key="${key}"]`)?.classList.add('sorted');
+  renderAll();
 }
 
-// ═══════════════════════════════════════════════════════════════
-// RENDER — TIMELINE
-// ═══════════════════════════════════════════════════════════════
-function renderTimeline() {
-  const body = document.getElementById('timeline-body');
-  const layers = getSortedLayers();
-  if (!layers.length) return;
-
-  const maxTotal = Math.max(...layers.map(l => (l.fwd_ms || 0) + (l.bwd_ms || 0)), 1);
-
-  body.innerHTML = '';
-  for (const l of layers) {
-    const fwdPct = Math.max(2, ((l.fwd_ms || 0) / maxTotal * 100)).toFixed(1);
-    const bwdPct = Math.max(0, ((l.bwd_ms || 0) / maxTotal * 100)).toFixed(1);
-    const bwdLeft = parseFloat(fwdPct);
-
-    const bm = BACKEND_COLORS[l.backend] || BACKEND_COLORS.CPU;
-
-    const row = document.createElement('div');
-    row.className = 'tl-row';
-    row.innerHTML = `
-      <div class="tl-label" title="${l.name}" onclick="selectLayer('${l.id}')">${l.label || l.name}</div>
+function renderTimeline(){
+  const body=document.getElementById('timeline-body'), layers=getSorted();
+  if(!layers.length) return;
+  const maxT=Math.max(...layers.map(l=>(l.fwd_ms||0)+(l.bwd_ms||0)),1);
+  body.innerHTML='';
+  for(const l of layers){
+    const fp=Math.max(2,(l.fwd_ms||0)/maxT*100).toFixed(1);
+    const bp=Math.max(0,(l.bwd_ms||0)/maxT*100).toFixed(1);
+    const bm=BACKEND[l.backend]||BACKEND.CPU;
+    const hot=(l.fwd_ms||0)>STATE.totalFwd*0.25;
+    const row=document.createElement('div'); row.className='tl-row';
+    row.innerHTML=`
+      <div class="tl-label" title="${l.name}" onclick="selectLayer('${l.id}')">${l.label}</div>
       <div class="tl-track">
-        <div class="tl-fwd" style="width:${fwdPct}%;background:${bm.c}"></div>
-        <div class="tl-bwd" style="left:${bwdLeft}%;width:${bwdPct}%"></div>
+        <div class="tl-fwd" style="width:${fp}%;background:${bm.c}"></div>
+        <div class="tl-bwd" style="left:${fp}%;width:${bp}%"></div>
       </div>
-      <div class="tl-val" style="color:${(l.fwd_ms||0) > STATE.totalFwd * 0.3 ? 'var(--hot)' : 'var(--muted)'}">
-        ${((l.fwd_ms || 0)).toFixed(1)}ms
-      </div>`;
+      <div class="tl-val" style="color:${hot?'var(--hot)':'var(--muted)'}">${(l.fwd_ms||0).toFixed(1)}ms</div>`;
     body.appendChild(row);
   }
 }
 
-// ═══════════════════════════════════════════════════════════════
-// RENDER — MEMORY CHART
-// ═══════════════════════════════════════════════════════════════
-function renderMemChart() {
-  const series = STATE.memSeries;
-  if (!series.length) return;
-
-  const labels = series.map(p => `i${p.iter}`);
-  const data   = series.map(p => p.bytes / 1024 / 1024);
-  const peak   = STATE.peakMem / 1024 / 1024;
-
-  memChart.data.labels = labels;
-  memChart.data.datasets[0].data = data;
-  memChart.data.datasets[1].data = data.map(() => peak);
+function renderMemChart(){
+  if(!STATE.memSeries.length) return;
+  const peak=STATE.peakMem/1048576;
+  memChart.data.labels=STATE.memSeries.map(p=>`i${p.iter}`);
+  memChart.data.datasets[0].data=STATE.memSeries.map(p=>p.bytes/1048576);
+  memChart.data.datasets[1].data=STATE.memSeries.map(()=>peak);
   memChart.update('none');
 }
 
-// ═══════════════════════════════════════════════════════════════
-// RENDER — FWD VS BWD
-// ═══════════════════════════════════════════════════════════════
-function renderFvB() {
-  const body = document.getElementById('fvb-body');
-  const layers = getSortedLayers().filter(l => (l.fwd_ms || 0) > 0);
-  if (!layers.length) return;
-
-  const maxFwd = Math.max(...layers.map(l => l.fwd_ms || 0), 1);
-  const maxBwd = Math.max(...layers.map(l => l.bwd_ms || 0), 1);
-  const globalMax = Math.max(maxFwd, maxBwd);
-
-  body.innerHTML = '';
-  for (const l of layers) {
-    const fwdPct = ((l.fwd_ms || 0) / globalMax * 100).toFixed(1);
-    const bwdPct = ((l.bwd_ms || 0) / globalMax * 100).toFixed(1);
-    const ratio  = (l.fwd_ms && l.bwd_ms) ? (l.bwd_ms / l.fwd_ms).toFixed(2) : '—';
-
-    const group = document.createElement('div');
-    group.className = 'fvb-group';
-    group.innerHTML = `
-      <div class="fvb-name">${l.label || l.name}</div>
-      <div class="fvb-bars">
-        <div class="fvb-bar-wrap">
-          <div class="fvb-track"><div class="fvb-fill-fwd" style="width:${fwdPct}%"></div></div>
-          <div class="fvb-track"><div class="fvb-fill-bwd" style="width:${bwdPct}%"></div></div>
-        </div>
-        <div style="font-size:7px;color:var(--muted);flex-shrink:0;width:36px;text-align:right;line-height:2;">
-          ${(l.fwd_ms||0).toFixed(1)}<br>${(l.bwd_ms||0).toFixed(1)}
-        </div>
+function renderFvB(){
+  const body=document.getElementById('fvb-body');
+  const layers=getSorted().filter(l=>(l.fwd_ms||0)>0);
+  if(!layers.length) return;
+  const gmax=Math.max(...layers.map(l=>Math.max(l.fwd_ms||0,l.bwd_ms||0)),1);
+  body.innerHTML='';
+  for(const l of layers){
+    const fp=((l.fwd_ms||0)/gmax*100).toFixed(1);
+    const bp=((l.bwd_ms||0)/gmax*100).toFixed(1);
+    const div=document.createElement('div'); div.className='fvb-group';
+    div.innerHTML=`
+      <div class="fvb-name">${l.label}</div>
+      <div class="fvb-track"><div class="fvb-fill-fwd" style="width:${fp}%"></div></div>
+      <div class="fvb-track"><div class="fvb-fill-bwd" style="width:${bp}%"></div></div>
+      <div class="fvb-nums">
+        <span style="color:var(--fwd)">fwd ${(l.fwd_ms||0).toFixed(2)}ms</span>
+        <span style="color:var(--bwd)">bwd ${(l.bwd_ms||0).toFixed(2)}ms</span>
       </div>`;
-    body.appendChild(group);
+    body.appendChild(div);
   }
 }
 
-// ═══════════════════════════════════════════════════════════════
-// RENDER — PER-OP TABLE
-// ═══════════════════════════════════════════════════════════════
-function renderTable() {
-  const tbody = document.getElementById('op-tbody');
-  const layers = getSortedLayers();
-  if (!layers.length) return;
-
-  const totalMs = STATE.totalFwd + STATE.totalBwd;
-  const hotThreshold  = STATE.totalFwd * 0.3;
-  const warmThreshold = STATE.totalFwd * 0.1;
-
-  tbody.innerHTML = '';
-  for (const l of layers) {
-    const fwd   = (l.fwd_ms  || 0).toFixed(2);
-    const bwd   = (l.bwd_ms  || 0).toFixed(2);
-    const mem   = l.mem_bytes ? fmtBytes(l.mem_bytes) : '—';
-    const layerTotal = (l.fwd_ms || 0) + (l.bwd_ms || 0);
-    const pct   = totalMs ? ((layerTotal / totalMs) * 100).toFixed(1) + '%' : '—';
-    const ratio = (l.fwd_ms && l.bwd_ms) ? (l.bwd_ms / l.fwd_ms).toFixed(2) + 'x' : '—';
-    const bm    = BACKEND_COLORS[l.backend] || BACKEND_COLORS.CPU;
-
-    const tr = document.createElement('tr');
-    if ((l.fwd_ms || 0) > hotThreshold)  tr.className = 'hot';
-    else if ((l.fwd_ms || 0) > warmThreshold) tr.className = 'warm';
-
-    tr.innerHTML = `
-      <td>${l.label || l.name}</td>
-      <td class="c-fwd">${fwd}</td>
-      <td class="c-bwd">${bwd}</td>
-      <td class="c-mem">${mem}</td>
+function renderTable(){
+  const tbody=document.getElementById('op-tbody'), layers=getSorted();
+  if(!layers.length) return;
+  const totalMs=STATE.totalFwd+STATE.totalBwd;
+  tbody.innerHTML='';
+  for(const l of layers){
+    const lt=(l.fwd_ms||0)+(l.bwd_ms||0);
+    const pct=totalMs?((lt/totalMs)*100).toFixed(1)+'%':'—';
+    const ratio=(l.fwd_ms&&l.bwd_ms)?(l.bwd_ms/l.fwd_ms).toFixed(2)+'x':'—';
+    const bm=BACKEND[l.backend]||BACKEND.CPU;
+    const tr=document.createElement('tr');
+    if((l.fwd_ms||0)>STATE.totalFwd*0.25) tr.className='hot';
+    else if((l.fwd_ms||0)>STATE.totalFwd*0.1) tr.className='warm';
+    tr.innerHTML=`
+      <td>${l.label}</td>
+      <td class="c-fwd">${(l.fwd_ms||0).toFixed(2)}</td>
+      <td class="c-bwd">${(l.bwd_ms||0).toFixed(2)}</td>
+      <td class="c-mem">${fmtBytes(l.mem_bytes)}</td>
       <td class="c-pct">${pct}</td>
-      <td class="c-back">${ratio}</td>
+      <td style="color:var(--muted)">${ratio}</td>
       <td><span style="font-size:8px;color:${bm.c};border:1px solid ${bm.c}44;padding:1px 5px;border-radius:2px;">${bm.label}</span></td>`;
     tbody.appendChild(tr);
   }
 }
 
-// ═══════════════════════════════════════════════════════════════
-// RENDER — STATS BAR
-// ═══════════════════════════════════════════════════════════════
-function renderStats() {
-  document.getElementById('stat-fwd').textContent  = STATE.totalFwd  ? STATE.totalFwd.toFixed(1)  + 'ms' : '—';
-  document.getElementById('stat-bwd').textContent  = STATE.totalBwd  ? STATE.totalBwd.toFixed(1)  + 'ms' : '—';
-  document.getElementById('stat-mem').textContent  = STATE.peakMem   ? fmtBytes(STATE.peakMem)           : '—';
-  document.getElementById('stat-iter').textContent = STATE.iterations ? STATE.iterations.toString()       : '—';
+function renderStats(){
+  document.getElementById('stat-fwd').textContent    = STATE.totalFwd  ? STATE.totalFwd.toFixed(1)+'ms' : '—';
+  document.getElementById('stat-bwd').textContent    = STATE.totalBwd  ? STATE.totalBwd.toFixed(1)+'ms' : '—';
+  document.getElementById('stat-mem').textContent    = STATE.peakMem   ? fmtBytes(STATE.peakMem)         : '—';
+  document.getElementById('stat-layers').textContent = Object.keys(STATE.layers).length || '—';
+  document.getElementById('stat-iter').textContent   = STATE.iterations || '—';
+}
 
-  if (STATE.totalFwd && STATE.iterations) {
-    const batchMs = (STATE.totalFwd + STATE.totalBwd) / STATE.iterations;
-    const tp = batchMs > 0 ? (1000 / batchMs).toFixed(0) + '/s' : '—';
-    document.getElementById('stat-tp').textContent = tp;
+function renderAll(){ renderTimeline(); renderFvB(); renderTable(); renderStats(); renderMemChart(); }
+
+function selectLayer(id){ vscode.postMessage({ type:'PROFILER_SELECT_LAYER', id }); }
+
+function loadProfile() {
+  vscode.postMessage({ type:'PROFILER_PICK_FILE' });
+}
+
+// Wire up buttons via addEventListener (works with CSP nonce)
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('btn-load')?.addEventListener('click', loadProfile);
+  document.getElementById('btn-load-main')?.addEventListener('click', loadProfile);
+});
+// Also wire immediately in case DOMContentLoaded already fired
+document.getElementById('btn-load')?.addEventListener('click', loadProfile);
+document.getElementById('btn-load-main')?.addEventListener('click', loadProfile);
+
+window.addEventListener('message', e=>{
+  const msg=e.data;
+  if(msg.type==='PROFILE_DATA'){
+    const d=msg.data;
+    STATE.layers={}; STATE.memSeries=[];
+    STATE.totalFwd=0; STATE.totalBwd=0; STATE.peakMem=0; STATE.iterations=d.iterations||0;
+    for(const l of d.layers){
+      STATE.layers[l.id]={
+        id:l.id, name:l.name,
+        label:l.name.length>22?l.name.slice(0,20)+'…':l.name,
+        fwd_ms:l.fwd_ms||0, bwd_ms:l.bwd_ms||0,
+        mem_bytes:l.mem_bytes||0, calls:l.calls||0,
+        backend:l.backend||'CPU'
+      };
+      STATE.totalFwd+=l.fwd_ms||0;
+      STATE.totalBwd+=l.bwd_ms||0;
+      STATE.peakMem=Math.max(STATE.peakMem,l.mem_bytes||0);
+      if(l.backend==='GPU') document.getElementById('tb-gpu').style.display='';
+      else                  document.getElementById('tb-cpu').style.display='';
+    }
+    if(d.memSeries){ STATE.memSeries=d.memSeries; d.memSeries.forEach(p=>{ STATE.peakMem=Math.max(STATE.peakMem,p.bytes); }); }
+    document.getElementById('loading').style.display='none';
+    document.getElementById('main').classList.add('visible');
+    document.getElementById('tb-sep').style.display='';
+    document.getElementById('tb-model').textContent=d.fileName||'profile';
+    document.getElementById('tb-badge').style.display='';
+    document.getElementById('tb-badge').className='badge badge-ok';
+    document.getElementById('tb-badge').textContent='✓ loaded';
+    document.getElementById('status-text').textContent=`${Object.keys(STATE.layers).length} layers · ${d.fileName}`;
+    renderAll();
   }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// SORT + HELPERS
-// ═══════════════════════════════════════════════════════════════
-const BACKEND_COLORS = {
-  CPU:  { c: '#38bdf8', label: 'CPU'  },
-  GPU:  { c: '#4ade80', label: 'GPU'  },
-  NPU:  { c: '#fb923c', label: 'NPU'  },
-  AUTO: { c: '#a78bfa', label: 'AUTO' },
-};
-
-function getSortedLayers() {
-  const arr = Object.values(STATE.layers);
-  const key = STATE.sortKey;
-  arr.sort((a, b) => {
-    let va, vb;
-    if (key === 'name')  { va = a.name; vb = b.name; return STATE.sortAsc ? va.localeCompare(vb) : vb.localeCompare(va); }
-    if (key === 'fwd')   { va = a.fwd_ms  || 0; vb = b.fwd_ms  || 0; }
-    if (key === 'bwd')   { va = a.bwd_ms  || 0; vb = b.bwd_ms  || 0; }
-    if (key === 'mem')   { va = a.mem_bytes|| 0; vb = b.mem_bytes|| 0; }
-    if (key === 'ratio') { va = (a.fwd_ms && a.bwd_ms) ? a.bwd_ms/a.fwd_ms : 0; vb = (b.fwd_ms && b.bwd_ms) ? b.bwd_ms/b.fwd_ms : 0; }
-    if (key === 'pct')   { va = (a.fwd_ms||0)+(a.bwd_ms||0); vb = (b.fwd_ms||0)+(b.bwd_ms||0); }
-    return STATE.sortAsc ? va - vb : vb - va;
-  });
-  return arr;
-}
-
-function sortTable(key) {
-  if (STATE.sortKey === key) STATE.sortAsc = !STATE.sortAsc;
-  else { STATE.sortKey = key; STATE.sortAsc = false; }
-  document.querySelectorAll('.op-table th').forEach(th => th.classList.remove('sorted'));
-  event.target.classList.add('sorted');
-  renderAll();
-}
-
-function fmtBytes(b) {
-  if (!b) return '—';
-  if (b >= 1024*1024*1024) return (b/1024/1024/1024).toFixed(2) + ' GB';
-  if (b >= 1024*1024)      return (b/1024/1024).toFixed(1) + ' MB';
-  if (b >= 1024)           return (b/1024).toFixed(0) + ' KB';
-  return b + ' B';
-}
-
-function renderAll() {
-  renderTimeline();
-  renderFvB();
-  renderTable();
-  renderStats();
-}
-
-function selectLayer(id) {
-  // Tell extension.js to highlight this layer in the visualizer too
-  vscode.postMessage({ type: 'PROFILER_SELECT_LAYER', id });
-}
-
-// ═══════════════════════════════════════════════════════════════
-// MESSAGE HANDLER: extension.js → profiler webview
-// ═══════════════════════════════════════════════════════════════
-window.addEventListener('message', e => {
-  const msg = e.data;
-
-  switch (msg.type) {
-
-    // ── Run started ─────────────────────────────────────────────
-    case 'PROF_START': {
-      STATE.running = true;
-      STATE.layers = {}; STATE.memSeries = [];
-      STATE.totalFwd = 0; STATE.totalBwd = 0;
-      STATE.peakMem = 0; STATE.iterations = 0;
-      STATE.modelName = msg.data.modelName || 'model';
-
-      document.getElementById('loading').style.display = 'none';
-      document.getElementById('main').classList.add('visible');
-      document.getElementById('tb-model').textContent = STATE.modelName;
-      document.getElementById('tb-sep').style.display = '';
-      document.getElementById('tb-iter').style.display = '';
-      document.getElementById('tb-status-badge').style.display = '';
-      document.getElementById('tb-status-badge').className = 'badge badge-live';
-      document.getElementById('tb-status-badge').textContent = '● live';
-      document.getElementById('btn-stop').classList.remove('btn-disabled');
-      document.getElementById('btn-run').classList.add('btn-disabled');
-      document.getElementById('status-dot').classList.add('live');
-      document.getElementById('status-text').textContent = 'Profiling…';
-      document.getElementById('log-strip').classList.add('open');
-      document.getElementById('btn-toggle-log').textContent = '▲ Log';
-
-      log(`[profiler] Connected to ${msg.data.host} · ${STATE.modelName}`, 'log-ok');
-      break;
-    }
-
-    // ── SSH / parse log line ────────────────────────────────────
-    case 'PROF_LOG': {
-      log(msg.data.text, msg.data.cls || '');
-      break;
-    }
-
-    // ── Layer timing update (streamed per-layer as report arrives) ──
-    case 'PROF_LAYER': {
-      const d = msg.data;
-      if (!STATE.layers[d.id]) {
-        STATE.layers[d.id] = {
-          id: d.id, name: d.name,
-          label: d.name.length > 20 ? d.name.slice(0, 18) + '…' : d.name,
-          fwd_ms: 0, bwd_ms: 0, mem_bytes: 0, calls: 0,
-          backend: d.backend || 'CPU',
-        };
-      }
-      const l = STATE.layers[d.id];
-      if (d.fwd_ms !== undefined) l.fwd_ms = d.fwd_ms;
-      if (d.bwd_ms !== undefined) l.bwd_ms = d.bwd_ms;
-      if (d.mem_bytes !== undefined) { l.mem_bytes = d.mem_bytes; STATE.peakMem = Math.max(STATE.peakMem, d.mem_bytes); }
-      if (d.calls   !== undefined) l.calls   = d.calls;
-
-      // Backend detection for topbar badges
-      if (d.backend === 'GPU') { STATE.hasGPU = true; document.getElementById('tb-backend-gpu').style.display = ''; }
-      else { STATE.hasCPU = true; document.getElementById('tb-backend-cpu').style.display = ''; }
-
-      renderAll();
-      break;
-    }
-
-    // ── Total timings (from report summary) ─────────────────────
-    case 'PROF_TOTALS': {
-      if (msg.data.totalFwd !== undefined) STATE.totalFwd = msg.data.totalFwd;
-      if (msg.data.totalBwd !== undefined) STATE.totalBwd = msg.data.totalBwd;
-      if (msg.data.iterations !== undefined) {
-        STATE.iterations = msg.data.iterations;
-        document.getElementById('tb-iter').textContent = `iter ${STATE.iterations}`;
-      }
-      renderStats();
-      break;
-    }
-
-    // ── Memory snapshot (per iteration) ─────────────────────────
-    case 'PROF_MEM': {
-      STATE.memSeries.push({ iter: msg.data.iter, bytes: msg.data.bytes });
-      if (msg.data.bytes > STATE.peakMem) STATE.peakMem = msg.data.bytes;
-      // Keep last 200 points for chart perf
-      if (STATE.memSeries.length > 200) STATE.memSeries.shift();
-      renderMemChart();
-      renderStats();
-      break;
-    }
-
-    // ── Run finished ─────────────────────────────────────────────
-    case 'PROF_DONE': {
-      STATE.running = false;
-      document.getElementById('tb-status-badge').className = 'badge badge-done';
-      document.getElementById('tb-status-badge').textContent = '✓ done';
-      document.getElementById('btn-stop').classList.add('btn-disabled');
-      document.getElementById('btn-run').classList.remove('btn-disabled');
-      document.getElementById('status-dot').classList.remove('live');
-      document.getElementById('status-text').textContent = `Completed ${STATE.iterations} iterations`;
-      log('[profiler] Run complete.', 'log-ok');
-      renderAll();
-      break;
-    }
-
-    // ── Error ────────────────────────────────────────────────────
-    case 'PROF_ERROR': {
-      STATE.running = false;
-      document.getElementById('tb-status-badge').className = 'badge badge-err';
-      document.getElementById('tb-status-badge').textContent = '⚠ error';
-      document.getElementById('btn-stop').classList.add('btn-disabled');
-      document.getElementById('btn-run').classList.remove('btn-disabled');
-      document.getElementById('status-dot').classList.remove('live');
-      document.getElementById('status-text').textContent = 'Error: ' + (msg.data.message || 'unknown');
-      log('[error] ' + (msg.data.message || ''), 'log-err');
-      break;
-    }
+  if(msg.type==='PROFILE_ERROR'){
+    document.getElementById('tb-badge').style.display='';
+    document.getElementById('tb-badge').className='badge badge-err';
+    document.getElementById('tb-badge').textContent='⚠ error';
+    document.getElementById('status-text').textContent='Error: '+msg.data.message;
   }
 });
 
-// ═══════════════════════════════════════════════════════════════
-// READY
-// ═══════════════════════════════════════════════════════════════
-vscode.postMessage({ type: 'PROFILER_READY' });
+vscode.postMessage({ type:'PROFILER_READY' });
 </script>
 </body>
 </html>

@@ -1,0 +1,1594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" 
+  content="default-src 'none'; 
+           script-src 'nonce-${nonce}' https://unpkg.com; 
+           style-src 'unsafe-inline' https://fonts.googleapis.com;
+           font-src https://fonts.gstatic.com;
+           img-src data: vscode-resource:;">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NNTrainer Visualizer</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:      #060c18;
+    --surface: #0a1220;
+    --border:  #162035;
+    --text:    #dde6f0;
+    --muted:   #4a6080;
+    --dim:     #1a2a40;
+    --accent:  #22d3ee;
+    --font:    'JetBrains Mono', monospace;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Topbar ───────────────────────────────── */
+  #topbar {
+    height: 44px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 12px;
+    flex-shrink: 0;
+    z-index: 100;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  .title { font-family: 'Syne', sans-serif; font-size: 13px; color: var(--accent); font-weight: 800; letter-spacing: 0.5px; }
+  .sep { color: var(--border); font-size: 12px; }
+  .meta { font-size: 10px; color: var(--muted); }
+  .badge { font-size: 9px; padding: 2px 8px; border-radius: 3px; font-weight: 700; }
+  .badge-green { background: #34d39918; border: 1px solid #34d39944; color: #34d399; }
+  .badge-yellow { background: #f59e0b18; border: 1px solid #f59e0b44; color: #f59e0b; }
+  #topbar .right { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+  .btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    cursor: pointer;
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 9px;
+    font-family: var(--font);
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    transition: all 0.15s;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-accent { border-color: var(--accent); color: var(--accent); background: #22d3ee10; }
+  .btn-accent:hover { background: #22d3ee22; }
+
+  /* ── Loading Screen ───────────────────────── */
+  #loading {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+  }
+  #loading .big-title { font-family: 'Syne', sans-serif; font-size: 28px; font-weight: 800; color: var(--text); }
+  #loading .sub { font-size: 11px; color: var(--muted); }
+  .spinner {
+    width: 28px; height: 28px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Progress ─────────────────────────────── */
+  #progress-wrap { width: 340px; display: none; flex-direction: column; gap: 6px; }
+  #progress-wrap.show { display: flex; }
+  #progress-bar-track { height: 3px; background: var(--border); border-radius: 2px; }
+  #progress-bar-fill  { height: 3px; background: var(--accent); border-radius: 2px; width: 0%; transition: width 0.1s; }
+  #progress-label { font-size: 9px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #progress-pct { font-size: 10px; color: var(--accent); }
+
+  /* ── Main Layout ──────────────────────────── */
+  #main { flex: 1; display: flex; overflow: hidden; }
+
+  /* ── Sidebar ──────────────────────────────── */
+  #sidebar {
+    width: 168px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 14px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    flex-shrink: 0;
+    overflow-y: auto;
+  }
+  .sidebar-section-title {
+    font-size: 8px;
+    color: #1e3050;
+    letter-spacing: 3px;
+    margin-bottom: 8px;
+    margin-top: 10px;
+    font-weight: 700;
+  }
+  .legend-item { display: flex; align-items: center; gap: 7px; padding: 3px 0; }
+  .legend-dot { width: 7px; height: 7px; border-radius: 2px; flex-shrink: 0; }
+  .legend-label { font-size: 9px; color: #5a7090; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .legend-count { font-size: 9px; font-weight: 700; }
+  .info-row { display: flex; justify-content: space-between; font-size: 9px; color: var(--muted); padding: 2px 0; line-height: 2; }
+  .sidebar-footer { margin-top: auto; border-top: 1px solid var(--border); padding-top: 10px; font-size: 8px; color: #142028; line-height: 2; }
+
+  /* ── Canvas ───────────────────────────────── */
+  #canvas-wrap { flex: 1; position: relative; overflow: hidden; }
+  #graph-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: grab; }
+  #graph-svg.dragging { cursor: grabbing; }
+
+  /* ── Detail Panel ─────────────────────────── */
+  #detail-panel {
+    width: 0;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    overflow: hidden;
+    flex-shrink: 0;
+    transition: width 0.2s ease;
+    display: flex;
+    flex-direction: column;
+  }
+  #detail-panel.open { width: 285px; }
+  #detail-inner { width: 285px; padding: 14px 16px; overflow-y: auto; flex: 1; }
+
+  .panel-type  { font-size: 8px; letter-spacing: 3px; margin-bottom: 3px; font-weight: 700; }
+  .panel-name  { font-size: 14px; font-weight: 700; word-break: break-all; line-height: 1.4; margin-bottom: 16px; }
+  .close-btn   { background: none; border: 1px solid var(--border); color: var(--muted); cursor: pointer; padding: 2px 7px; border-radius: 4px; font-size: 11px; font-family: var(--font); }
+
+  .card { background: #050a14; border-radius: 8px; padding: 10px 12px; border: 1px solid var(--border); margin-bottom: 10px; }
+  .card-label { font-size: 8px; color: #1e3050; letter-spacing: 2px; margin-bottom: 8px; font-weight: 700; }
+  .card-value { font-size: 13px; color: var(--text); font-weight: 700; font-family: var(--font); }
+  .dtype-badge { display: inline-block; font-size: 9px; background: #22d3ee15; color: #22d3ee; padding: 2px 8px; border-radius: 3px; border: 1px solid #22d3ee33; margin-top: 8px; }
+  .time-value { font-size: 22px; font-weight: 700; text-shadow: 0 0 16px currentColor; }
+  .param-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #0a1520; }
+  .param-row:last-child { border-bottom: none; }
+  .param-key { font-size: 10px; color: #3a5070; }
+  .param-val { font-size: 10px; color: #b0c8e0; font-weight: 600; max-width: 150px; text-align: right; word-break: break-all; }
+  .conn-item { font-size: 10px; color: var(--muted); margin-bottom: 4px; font-family: var(--font); }
+
+  /* histogram */
+  .hist-wrap { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+  .tensor-name { font-size: 10px; font-weight: 700; margin-bottom: 4px; }
+  .tensor-shape { font-size: 9px; color: var(--muted); margin-bottom: 6px; }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 14px; margin-top: 6px; }
+  .stat-item { display: flex; justify-content: space-between; }
+  .stat-key { font-size: 9px; color: #2a4060; }
+  .stat-val { font-size: 9px; color: #90b0d0; }
+  .stat-count { font-size: 9px; color: var(--dim); margin-top: 4px; }
+  .no-bin-hint { font-size: 9px; color: var(--dim); padding: 4px 0; }
+
+  /* ── Profile Tabs ─────────────────────────────────────────────── */
+  .tab-row { display:flex; border-bottom:1px solid var(--border); margin-bottom:12px; }
+  .tab-btn {
+    flex:1; padding:7px 0; font-size:8px; font-weight:700; letter-spacing:1.5px;
+    background:none; border:none; border-bottom:2px solid transparent;
+    cursor:pointer; color:var(--muted); font-family:var(--font); transition:all 0.15s;
+  }
+  .tab-btn.active { color:var(--accent); border-bottom-color:var(--accent); }
+
+  /* ── Profiler Drawer ──────────────────────────────────────────── */
+  #profiler-drawer {
+    height:0; overflow:hidden; background:var(--surface);
+    border-top:1px solid var(--border); flex-shrink:0;
+    transition:height 0.22s ease; display:flex; flex-direction:column;
+  }
+  #profiler-drawer.open { height:218px; }
+  #profiler-header {
+    padding:5px 16px; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; gap:12px; flex-shrink:0; height:34px;
+  }
+  #profiler-inner { flex:1; overflow:hidden; display:flex; }
+  .timing-scroll { flex:1; overflow-y:auto; padding:8px 16px; }
+  .timing-row { display:flex; align-items:center; gap:6px; margin-bottom:4px; }
+  .timing-label {
+    font-size:8px; color:var(--muted); width:140px; flex-shrink:0;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    text-align:right; cursor:pointer;
+  }
+  .timing-label:hover { color:var(--accent); }
+  .timing-bars-col { flex:1; display:flex; flex-direction:column; gap:2px; }
+  .timing-bar-track { height:8px; background:var(--dim); border-radius:2px; overflow:hidden; }
+  .timing-bar-fwd { height:100%; border-radius:2px; }
+  .timing-bar-bwd { height:100%; border-radius:2px; opacity:0.5; }
+  .timing-val { font-size:8px; color:var(--muted); width:52px; text-align:right; flex-shrink:0; }
+  .prof-kv { display:flex; flex-direction:column; gap:1px; }
+  .prof-kv-val { font-size:13px; font-weight:700; color:var(--accent); font-family:var(--font); }
+  .prof-kv-key { font-size:7px; color:var(--muted); letter-spacing:1px; }
+
+  /* ── Memory bars in detail panel ─────────────────────────────── */
+  .mem-row { display:flex; align-items:center; gap:6px; margin-bottom:4px; }
+  .mem-row-key { font-size:9px; color:var(--muted); width:82px; flex-shrink:0; }
+  .mem-bar-track { flex:1; height:7px; background:var(--dim); border-radius:2px; overflow:hidden; }
+  .mem-bar-fill { height:100%; border-radius:2px; }
+  .mem-row-val { font-size:9px; color:#90b0d0; width:58px; text-align:right; flex-shrink:0; }
+
+  /* ── Gradient norm rows ──────────────────────────────────────── */
+  .norm-row { display:flex; justify-content:space-between; padding:5px 0; border-bottom:1px solid #0a1520; }
+  .norm-row:last-child { border-bottom:none; }
+  .norm-key { font-size:9px; color:#3a5070; }
+  .norm-vals { display:flex; gap:8px; }
+  .norm-chip { font-size:8px; padding:1px 6px; border-radius:3px; border:1px solid; font-weight:700; font-family:var(--font); }
+
+  /* ── Statusbar ────────────────────────────── */
+  #statusbar {
+    height: 26px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 16px;
+    flex-shrink: 0;
+    font-size: 9px;
+    color: var(--muted);
+  }
+  .status-selected { color: var(--accent); }
+  .status-right { margin-left: auto; color: var(--dim); }
+</style>
+</head>
+<body>
+
+<!-- ── Topbar ─────────────────────────────────────────────── -->
+<div id="topbar">
+  <div class="dot"></div>
+  <span class="title">NNTrainer Visualizer</span>
+  <span class="sep">│</span>
+  <span class="meta" id="tb-filename">Loading…</span>
+  <span class="sep" id="tb-sep1" style="display:none">│</span>
+  <span class="meta" id="tb-layers" style="display:none"></span>
+  <span class="sep" id="tb-sep2" style="display:none">│</span>
+  <span class="meta" id="tb-params" style="display:none"></span>
+  <div class="right">
+    <span class="badge badge-green" id="tb-bin-badge" style="display:none">● weights loaded</span>
+    <span class="badge badge-yellow" id="tb-profile-badge" style="display:none">⏱ profiled</span>
+    <span class="meta" id="tb-throughput" style="display:none;color:#34d399;font-weight:700;"></span>
+    <button class="btn" id="btn-heatmap" style="display:none">☀ Heatmap</button>
+    <button class="btn" id="btn-toggle-profiler" style="display:none">▼ Profiler</button>
+    <button class="btn" id="btn-pick-profile">Load Profile…</button>
+    <button class="btn btn-accent" id="btn-pick-bin" style="display:none">Load .bin Weights…</button>
+  </div>
+</div>
+
+<!-- ── Loading Screen ─────────────────────────────────────── -->
+<div id="loading">
+  <div class="spinner"></div>
+  <div class="big-title">NNTrainer Visualizer</div>
+  <div class="sub">Reading model file…</div>
+  <div id="progress-wrap">
+    <div style="display:flex; justify-content:space-between;">
+      <span id="progress-label">Initializing…</span>
+      <span id="progress-pct">0%</span>
+    </div>
+    <div id="progress-bar-track"><div id="progress-bar-fill"></div></div>
+  </div>
+</div>
+
+<!-- ── Main UI (hidden until model loads) ─────────────────── -->
+<div id="main" style="display:none; flex:1; overflow:hidden;">
+
+  <!-- Sidebar -->
+  <div id="sidebar">
+    <div class="sidebar-section-title">LAYER TYPES</div>
+    <div id="legend-list"></div>
+    <div class="sidebar-section-title">MODEL INFO</div>
+    <div id="model-info"></div>
+    <div class="sidebar-footer">
+      Scroll → zoom<br>
+      Drag → pan<br>
+      Click → inspect
+    </div>
+  </div>
+
+  <!-- Graph Canvas -->
+  <div id="canvas-wrap">
+    <svg id="graph-svg" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <pattern id="grid-pat" width="32" height="32" patternUnits="userSpaceOnUse">
+          <path d="M32 0L0 0 0 32" fill="none" stroke="#0d1b2e" stroke-width="0.5"/>
+        </pattern>
+        <marker id="arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+          <polygon points="0,0.5 5,3 0,5.5" fill="#1a3050"/>
+        </marker>
+        <marker id="arrow-sel" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+          <polygon points="0,0.5 5,3 0,5.5" fill="#818cf8"/>
+        </marker>
+        <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="5" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      <rect id="grid-bg" width="100%" height="100%" fill="url(#grid-pat)"/>
+      <g id="graph-root"></g>
+    </svg>
+  </div>
+
+  <!-- Detail Panel -->
+  <div id="detail-panel">
+    <div id="detail-inner"></div>
+  </div>
+</div>
+
+<!-- ── Profiler Drawer (hidden until profile loaded) ─────────── -->
+<div id="profiler-drawer">
+  <div id="profiler-header">
+    <span style="font-size:9px;font-weight:700;color:var(--accent);letter-spacing:2px;flex-shrink:0;">PROFILER</span>
+    <div id="prof-summary" style="display:flex;gap:18px;"></div>
+    <button class="btn" id="btn-collapse-profiler" style="margin-left:auto;" onclick="toggleProfilerDrawer()">▼ collapse</button>
+  </div>
+  <div id="profiler-inner">
+    <div class="timing-scroll" id="timing-bars"></div>
+  </div>
+</div>
+
+<!-- Statusbar -->
+<div id="statusbar" style="display:none">
+  <span id="status-left">Click any node to inspect · Scroll to zoom · Drag to pan</span>
+  <span class="status-right" id="status-right"></span>
+</div>
+
+<script nonce="${nonce}">
+// ═══════════════════════════════════════════════════════════════
+// VS CODE API BRIDGE
+// ═══════════════════════════════════════════════════════════════
+// acquireVsCodeApi() gives us the channel to talk to extension.js
+// Like opening a socket to the host process
+const vscode = acquireVsCodeApi();
+
+// ═══════════════════════════════════════════════════════════════
+// CONSTANTS
+// ═══════════════════════════════════════════════════════════════
+const NW = 180, NH = 46, HGAP = 70, VGAP = 72;
+
+const LAYER_META = {
+  INPUT:{c:'#22d3ee',g:'I/O'}, OUTPUT:{c:'#22d3ee',g:'I/O'},
+  FULLY_CONNECTED:{c:'#818cf8',g:'Linear'}, FC:{c:'#818cf8',g:'Linear'},
+  CONV2D:{c:'#60a5fa',g:'Conv'}, CONV1D:{c:'#60a5fa',g:'Conv'},
+  CONV2DTRANSPOSE:{c:'#60a5fa',g:'Conv'},
+  EMBEDDING:{c:'#f472b6',g:'Embed'},
+  MULTI_HEAD_ATTENTION:{c:'#fb923c',g:'Attn'}, ATTENTION:{c:'#fb923c',g:'Attn'},
+  RMS_NORM:{c:'#a78bfa',g:'Norm'}, RMSNORM:{c:'#a78bfa',g:'Norm'},
+  LAYER_NORMALIZATION:{c:'#a78bfa',g:'Norm'}, BATCH_NORMALIZATION:{c:'#a78bfa',g:'Norm'},
+  RELU:{c:'#34d399',g:'Act'}, SILU:{c:'#34d399',g:'Act'}, GELU:{c:'#34d399',g:'Act'},
+  SIGMOID:{c:'#34d399',g:'Act'}, TANH:{c:'#34d399',g:'Act'},
+  SWIGLU:{c:'#34d399',g:'Act'}, ACTIVATION:{c:'#34d399',g:'Act'},
+  POOLING2D:{c:'#f59e0b',g:'Pool'}, POOLING:{c:'#f59e0b',g:'Pool'},
+  ADDITION:{c:'#94a3b8',g:'Op'}, CONCAT:{c:'#94a3b8',g:'Op'},
+  SPLIT:{c:'#94a3b8',g:'Op'}, MULTIPLY:{c:'#94a3b8',g:'Op'},
+  FLATTEN:{c:'#64748b',g:'Shape'}, RESHAPE:{c:'#64748b',g:'Shape'},
+  DROPOUT:{c:'#334155',g:'Reg'}, ZONEOUTLSTM:{c:'#334155',g:'Reg'},
+  LSTM:{c:'#e879f9',g:'RNN'}, GRU:{c:'#e879f9',g:'RNN'}, RNN:{c:'#e879f9',g:'RNN'},
+  LSTMCELL:{c:'#e879f9',g:'RNN'}, GRUCELL:{c:'#e879f9',g:'RNN'},
+  LOSS:{c:'#ef4444',g:'Loss'}, CROSS_ENTROPY_WITH_SOFTMAX:{c:'#ef4444',g:'Loss'},
+};
+const getMeta = t => {
+  const k = (t||'').toUpperCase().replace(/[-\s]/g,'_');
+  return LAYER_META[k] || {c:'#475569',g:'???'};
+};
+
+// ── Backend color map ───────────────────────────────────────────
+// Each backend gets a distinct accent color used on:
+//   • left-edge strip on every graph node
+//   • backend legend section in the sidebar
+//   • badge in the detail panel header
+const BACKEND_META = {
+  CPU:  { c:'#38bdf8', label:'CPU',  icon:'⬡', desc:'CPU (ARM64 / x86, default)' },
+  GPU:  { c:'#4ade80', label:'GPU',  icon:'▣', desc:'GPU (OpenCL / CUDA)'         },
+  NPU:  { c:'#fb923c', label:'NPU',  icon:'◈', desc:'NPU (Samsung Exynos on-device AI)' },
+  AUTO: { c:'#a78bfa', label:'AUTO', icon:'◎', desc:'Backend auto-selected at runtime'  },
+};
+const BACKEND_DEFAULT = { c:'#38bdf8', label:'CPU', icon:'⬡', desc:'CPU (default)' };
+
+// Normalise the raw backend= string from .ini into one of the keys above
+const getBackend = raw => {
+  const k = (raw||'').toUpperCase().trim();
+  if (!k || k==='DEFAULT' || k==='CPU' || k==='NEON' || k==='BLAS') return BACKEND_META.CPU;
+  if (k==='GPU' || k==='OPENCL' || k==='CUDA' || k==='CUDNN')       return BACKEND_META.GPU;
+  if (k==='NPU' || k==='NNSTREAMER' || k==='TFLITE' || k==='SNPE')  return BACKEND_META.NPU;
+  if (k==='AUTO')                                                     return BACKEND_META.AUTO;
+  return BACKEND_DEFAULT;
+};
+
+// ═══════════════════════════════════════════════════════════════
+// INI PARSER  (identical to what was explained — runs in webview)
+// ═══════════════════════════════════════════════════════════════
+function parseINI(text) {
+  const s = {}; let cur = null;
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line || line[0]==='#' || line[0]===';') continue;
+    if (line[0]==='[') { cur = line.slice(1,line.lastIndexOf(']')).trim(); s[cur]={}; }
+    else if (cur) { const eq=line.indexOf('='); if(eq>0) s[cur][line.slice(0,eq).trim().toLowerCase()]=line.slice(eq+1).trim(); }
+  }
+  return s;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SHAPE INFERENCE
+// ═══════════════════════════════════════════════════════════════
+function inferShape(type, props, prevShape) {
+  // Helper: safely multiply all dims (skip '?' entries)
+  const prod = s => s.reduce((a,b)=>typeof b==='number'?a*b:a, 1);
+
+  // ── INPUT ──────────────────────────────────────────────────────
+  if (type==='INPUT') {
+    const raw = props.input_shape||props.shape||'';
+    // NNTrainer format: "1:28:28" or "28:28:1" or "784"
+    const s = raw.split(':').map(Number).filter(n=>!isNaN(n)&&n>0);
+    return s.length ? s : null;
+  }
+
+  // ── EMBEDDING ──────────────────────────────────────────────────
+  if (type==='EMBEDDING') {
+    const seq = parseInt(props.sequence_length||props.max_len||0);
+    const dim = parseInt(props.out_dim||props.embedding_dim||0);
+    if (seq && dim) return [seq, dim];
+    if (dim) return [dim];
+    return prevShape;
+  }
+
+  // ── FULLY CONNECTED ────────────────────────────────────────────
+  if (['FULLY_CONNECTED','FC'].includes(type)) {
+    const o = parseInt(props.unit||props.units||0);
+    if (!o) return prevShape;
+    // Replace last dim with output units
+    return prevShape ? [...prevShape.slice(0,-1), o] : [o];
+  }
+
+  // ── CONV2D ─────────────────────────────────────────────────────
+  if (type==='CONV2D') {
+    const f = parseInt(props.filters||0);
+    if (!f) return prevShape;
+    if (prevShape && prevShape.length >= 3) {
+      // Try to compute spatial output: floor((in + 2*pad - k) / stride) + 1
+      const k = (props.kernel_size||'1').split(',').map(Number);
+      const kH = k[0]||1, kW = k[1]||kH;
+      const s = (props.stride||props.strides||'1').split(',').map(Number);
+      const sH = s[0]||1, sW = s[1]||sH;
+      const pad = (props.padding||'').toLowerCase();
+      // prevShape for NNTrainer is [C, H, W]
+      const inH = prevShape[1], inW = prevShape[2];
+      if (typeof inH==='number' && typeof inW==='number') {
+        const outH = pad==='same' ? Math.ceil(inH/sH) : Math.floor((inH-kH)/sH)+1;
+        const outW = pad==='same' ? Math.ceil(inW/sW) : Math.floor((inW-kW)/sW)+1;
+        return [f, outH, outW];
+      }
+    }
+    return [f, '?', '?'];
+  }
+
+  // ── CONV1D ─────────────────────────────────────────────────────
+  if (type==='CONV1D') {
+    const f = parseInt(props.filters||0);
+    if (!f) return prevShape;
+    if (prevShape && prevShape.length >= 2) {
+      const k = parseInt(props.kernel_size||1);
+      const stride = parseInt(props.stride||props.strides||1);
+      const pad = (props.padding||'').toLowerCase();
+      const inL = prevShape[prevShape.length-1];
+      if (typeof inL==='number') {
+        const outL = pad==='same' ? Math.ceil(inL/stride) : Math.floor((inL-k)/stride)+1;
+        return [f, outL];
+      }
+    }
+    return [f, '?'];
+  }
+
+  // ── CONV2D TRANSPOSE ───────────────────────────────────────────
+  if (type==='CONV2DTRANSPOSE') {
+    const f = parseInt(props.filters||0);
+    return f ? [f, '?', '?'] : prevShape;
+  }
+
+  // ── POOLING ────────────────────────────────────────────────────
+  if (['POOLING2D','POOLING'].includes(type)) {
+    if (prevShape && prevShape.length >= 3) {
+      const p = (props.pool_size||props.pooling_size||'2').split(',').map(Number);
+      const pH = p[0]||2, pW = p[1]||pH;
+      const s = (props.stride||props.strides||String(pH)).split(',').map(Number);
+      const sH = s[0]||pH, sW = s[1]||sH;
+      const inH = prevShape[1], inW = prevShape[2];
+      if (typeof inH==='number' && typeof inW==='number') {
+        return [prevShape[0], Math.floor(inH/sH), Math.floor(inW/sW)];
+      }
+    }
+    return prevShape;
+  }
+
+  // ── FLATTEN ────────────────────────────────────────────────────
+  if (type==='FLATTEN') {
+    if (!prevShape) return null;
+    const total = prod(prevShape);
+    return [total];
+  }
+
+  // ── RESHAPE ────────────────────────────────────────────────────
+  if (type==='RESHAPE') {
+    const raw = props.target_shape||props.output_shape||'';
+    if (raw) {
+      const s = raw.split(':').map(Number).filter(n=>!isNaN(n)&&n>0);
+      if (s.length) return s;
+    }
+    return prevShape;
+  }
+
+  // ── NORMALIZATION (output = same as input) ─────────────────────
+  if (['RMS_NORM','RMSNORM','LAYER_NORMALIZATION',
+       'BATCH_NORMALIZATION','INSTANCE_NORMALIZATION'].includes(type)) {
+    return prevShape;
+  }
+
+  // ── ACTIVATIONS (output = same as input) ──────────────────────
+  if (['RELU','SILU','GELU','SIGMOID','TANH','SWIGLU',
+       'ACTIVATION','SOFTMAX','MISH','SWISH'].includes(type)) {
+    return prevShape;
+  }
+
+  // ── DROPOUT / REGULARIZATION ───────────────────────────────────
+  if (['DROPOUT','ZONEOUTLSTM'].includes(type)) return prevShape;
+
+  // ── ELEMENTWISE OPS (ADD, MULTIPLY — same shape as input) ──────
+  if (['ADDITION','MULTIPLY'].includes(type)) return prevShape;
+
+  // ── CONCAT ─────────────────────────────────────────────────────
+  // Doubles the last dim (assumes 2 equal inputs on last axis)
+  if (type==='CONCAT') {
+    if (prevShape) {
+      const axis = parseInt(props.axis||String(prevShape.length-1));
+      // We only know one input's shape here so mark the concat axis as '?'
+      const out = [...prevShape];
+      out[axis] = '?';
+      return out;
+    }
+    return prevShape;
+  }
+
+  // ── SPLIT ──────────────────────────────────────────────────────
+  if (type==='SPLIT') {
+    if (prevShape) {
+      const n = parseInt(props.split_dimension||props.num_splits||2);
+      const out = [...prevShape];
+      const last = out[out.length-1];
+      out[out.length-1] = typeof last==='number' ? Math.floor(last/n) : '?';
+      return out;
+    }
+    return prevShape;
+  }
+
+  // ── LSTM / GRU / RNN ──────────────────────────────────────────
+  if (['LSTM','LSTMCELL','GRU','GRUCELL','RNN'].includes(type)) {
+    const h = parseInt(props.unit||props.units||props.hidden_size||0);
+    if (h) return prevShape ? [prevShape[0], h] : [h];
+    return prevShape;
+  }
+
+  // ── MULTI HEAD ATTENTION ───────────────────────────────────────
+  if (['MULTI_HEAD_ATTENTION','ATTENTION'].includes(type)) {
+    // Output shape = same as query input shape
+    return prevShape;
+  }
+
+  // ── LOSS LAYERS ────────────────────────────────────────────────
+  if (['LOSS','CROSS_ENTROPY_WITH_SOFTMAX','MSE_LOSS'].includes(type)) {
+    return prevShape; // loss output = same shape (before reduction)
+  }
+
+  // ── UNKNOWN / PASSTHROUGH ──────────────────────────────────────
+  return prevShape;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// WEIGHT TENSOR CALCULATOR
+// ═══════════════════════════════════════════════════════════════
+function getWeightTensors(type, props, prevShape) {
+  const inDim = prevShape?(typeof prevShape[prevShape.length-1]==='number'?prevShape[prevShape.length-1]:0):0;
+  const t=[];
+  if (['FULLY_CONNECTED','FC'].includes(type)) {
+    const out=parseInt(props.unit||props.units||0);
+    if(out&&inDim){
+      t.push({name:'weight',shape:[out,inDim],bytes:out*inDim*4});
+      if(props.bias_initializer!=='zeros'&&props.bias!=='false'&&props.bias!=='0')
+        t.push({name:'bias',shape:[out],bytes:out*4});
+    }
+  } else if (['CONV2D','CONV1D'].includes(type)) {
+    const f=parseInt(props.filters||0);
+    const k=(props.kernel_size||'1,1').split(',').map(Number);
+    if(f&&inDim){
+      const kH=k[0]||1,kW=k[1]||k[0]||1;
+      t.push({name:'kernel',shape:[f,inDim,kH,kW],bytes:f*inDim*kH*kW*4});
+      if(props.bias!=='false') t.push({name:'bias',shape:[f],bytes:f*4});
+    }
+  } else if (type==='EMBEDDING') {
+    const v=parseInt(props.in_dim||0),e=parseInt(props.out_dim||0);
+    if(v&&e) t.push({name:'weight',shape:[v,e],bytes:v*e*4});
+  } else if (['RMS_NORM','RMSNORM'].includes(type)) {
+    if(inDim) t.push({name:'gamma',shape:[inDim],bytes:inDim*4});
+  } else if (['LAYER_NORMALIZATION','BATCH_NORMALIZATION'].includes(type)) {
+    if(inDim){
+      t.push({name:'gamma',shape:[inDim],bytes:inDim*4});
+      t.push({name:'beta', shape:[inDim],bytes:inDim*4});
+    }
+  } else if (['LSTM','LSTMCELL'].includes(type)) {
+    const hidden=parseInt(props.unit||props.units||0);
+    if(hidden&&inDim){
+      t.push({name:'weight_ih',shape:[4*hidden,inDim],bytes:4*hidden*inDim*4});
+      t.push({name:'weight_hh',shape:[4*hidden,hidden],bytes:4*hidden*hidden*4});
+      t.push({name:'bias',shape:[4*hidden],bytes:4*hidden*4});
+    }
+  } else if (['GRU','GRUCELL'].includes(type)) {
+    const hidden=parseInt(props.unit||props.units||0);
+    if(hidden&&inDim){
+      t.push({name:'weight_ih',shape:[3*hidden,inDim],bytes:3*hidden*inDim*4});
+      t.push({name:'weight_hh',shape:[3*hidden,hidden],bytes:3*hidden*hidden*4});
+    }
+  } else if (type==='MULTI_HEAD_ATTENTION') {
+    const heads=parseInt(props.num_heads||1);
+    const dim=parseInt(props.model_dim||props.hidden_dim||inDim||0);
+    if(dim){
+      ['q_weight','k_weight','v_weight','out_weight'].forEach(n=>
+        t.push({name:n,shape:[dim,dim],bytes:dim*dim*4}));
+    }
+  }
+  return t;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// GRAPH BUILDER
+// ═══════════════════════════════════════════════════════════════
+function buildGraph(sections) {
+  const modelKey = Object.keys(sections).find(k=>k.toLowerCase()==='model')||'';
+  const meta     = sections[modelKey]||{};
+  const entries  = Object.entries(sections).filter(([k])=>k.toLowerCase()!=='model'&&k.toLowerCase()!=='optimizer'&&k.toLowerCase()!=='learningratescheduler'&&k.toLowerCase()!=='dataset');
+
+  const layers = entries.map(([id,props])=>({
+    id, label: id.split('/').pop(), fullName: id,
+    type: (props.type||'UNKNOWN').toUpperCase().replace(/[-\s]/g,'_'),
+    props,
+    inputs: props.input_layers ? props.input_layers.split(',').map(s=>s.trim()).filter(Boolean) : [],
+    outputs: [], outputShape: null, weightTensors: [], weightStats: null,
+    // backend= key from .ini — e.g. "cpu", "gpu", "npu", "auto"
+    // defaults to CPU if not specified (NNTrainer default)
+    backend: getBackend(props.backend||props.compute_engine||''),
+  }));
+
+  const lmap = Object.fromEntries(layers.map(l=>[l.id,l]));
+
+  // Fallback sequential linking if no input_layers declared
+  if (layers.length>1 && layers.every(l=>l.inputs.length===0)) {
+    for (let i=1;i<layers.length;i++) layers[i].inputs=[layers[i-1].id];
+  }
+
+  // Build output edges from input edges
+  for (const l of layers)
+    for (const inp of l.inputs)
+      if (lmap[inp]) lmap[inp].outputs.push(l.id);
+
+  // Topological sort (DFS)
+  const visited=new Set(), order=[];
+  const visit = id => {
+    if(visited.has(id)) return;
+    visited.add(id);
+    (lmap[id]?.inputs||[]).forEach(visit);
+    order.push(id);
+  };
+  layers.forEach(l=>visit(l.id));
+
+  // Shape propagation
+  const shapes={};
+  for (const id of order) {
+    const l=lmap[id]; if(!l) continue;
+    const prev=l.inputs.map(i=>shapes[i]).find(Boolean)||null;
+    shapes[id]       = inferShape(l.type,l.props,prev);
+    l.outputShape    = shapes[id];
+    l.weightTensors  = getWeightTensors(l.type,l.props,prev);
+  }
+
+  let totalParams=0;
+  for (const l of layers)
+    for (const t of l.weightTensors)
+      if (t.shape.every(d=>typeof d==='number'))
+        totalParams += t.shape.reduce((a,b)=>a*b,1);
+
+  return { layers, lmap, meta, totalParams };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// LAYOUT ENGINE
+// ═══════════════════════════════════════════════════════════════
+function layoutGraph(layers) {
+  const lmap = Object.fromEntries(layers.map(l=>[l.id,l]));
+  const ranks={};
+  const setRank=(id,r)=>{
+    if((ranks[id]??-1)>=r) return;
+    ranks[id]=r;
+    (lmap[id]?.outputs||[]).forEach(o=>setRank(o,r+1));
+  };
+  layers.filter(l=>l.inputs.length===0).forEach(l=>setRank(l.id,0));
+  layers.forEach(l=>{ if(ranks[l.id]===undefined) ranks[l.id]=0; });
+
+  const groups={};
+  for(const [id,r] of Object.entries(ranks)){
+    if(!groups[r]) groups[r]=[];
+    groups[r].push(id);
+  }
+  const maxRank=Math.max(...Object.values(ranks),0);
+  const positions={};
+  for(let r=0;r<=maxRank;r++){
+    const g=groups[r]||[];
+    const total=g.length*NW+(g.length-1)*HGAP;
+    g.forEach((id,i)=>{
+      positions[id]={ x:-total/2+i*(NW+HGAP), y:r*(NH+VGAP) };
+    });
+  }
+  return positions;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SVG GRAPH RENDERER
+// ═══════════════════════════════════════════════════════════════
+let STATE = {
+  graph: null, positions: null, selected: null,
+  pan: {x:0,y:0}, zoom:1, hasBin: false,
+  hasProfile: false, profile: null, heatmapMode: false, detailTab: 'layer'
+};
+
+// ── Heat color: 0=cool blue → 0.5=yellow → 1=hot red ──────────
+function getHeatColor(val, mn, mx) {
+  const t = (mx===mn) ? 0 : Math.max(0,Math.min(1,(val-mn)/(mx-mn)));
+  let r,g,b;
+  if(t<0.5){ const s=t*2; r=Math.round(30+s*190); g=Math.round(120+s*60); b=Math.round(220-s*200); }
+  else      { const s=(t-0.5)*2; r=220; g=Math.round(180-s*150); b=0; }
+  return `rgb(${r},${g},${b})`;
+}
+
+// ── Memory estimator: weights + activations + gradients ────────
+function estimateMemory(layer){
+  const wBytes = layer.weightTensors.reduce((a,t)=>a+(t.bytes||0),0);
+  let   aBytes = 0;
+  if(layer.outputShape) aBytes = layer.outputShape.reduce((a,b)=>typeof b==='number'?a*b:a,1)*4;
+  const gBytes = wBytes; // gradient buffer == weight buffer (FP32 training)
+  return { wBytes, aBytes, gBytes, total: wBytes+aBytes+gBytes };
+}
+
+// ── Format bytes → "1.2 MB" / "340 KB" ────────────────────────
+function fmtBytes(b){
+  if(b>=1024*1024) return (b/1024/1024).toFixed(1)+' MB';
+  if(b>=1024)      return (b/1024).toFixed(0)+' KB';
+  return b+' B';
+}
+
+function bezierPath(fromId, toId) {
+  const f=STATE.positions[fromId], t=STATE.positions[toId];
+  if(!f||!t) return '';
+  const x1=f.x+NW/2, y1=f.y+NH, x2=t.x+NW/2, y2=t.y;
+  const cy=(y1+y2)/2;
+  return `M${x1},${y1} C${x1},${cy} ${x2},${cy} ${x2},${y2}`;
+}
+
+function renderGraph() {
+  const root  = document.getElementById('graph-root');
+  const {graph,positions,selected} = STATE;
+  root.innerHTML = '';
+
+  // Heatmap: compute forward-time range across all layers
+  let heatMin=Infinity, heatMax=-Infinity;
+  if(STATE.heatmapMode && STATE.profile?.layers){
+    for(const l of graph.layers){
+      const pt=STATE.profile.layers[l.id];
+      if(pt?.fwd_ms!==undefined){ heatMin=Math.min(heatMin,pt.fwd_ms); heatMax=Math.max(heatMax,pt.fwd_ms); }
+    }
+  }
+
+  // Build edge list
+  const edges=[];
+  for(const l of graph.layers) for(const inp of l.inputs) edges.push([inp,l.id]);
+
+  // Draw edges
+  const edgeG = svgEl('g'); root.appendChild(edgeG);
+  for(const [f,t] of edges){
+    const isSel = selected===f||selected===t;
+    const color = isSel?getMeta(graph.lmap[f]?.type).c:'#1a3050';
+    const path  = svgEl('path');
+    path.setAttribute('d', bezierPath(f,t));
+    path.setAttribute('fill','none');
+    path.setAttribute('stroke', color);
+    path.setAttribute('stroke-width', isSel?'2':'1');
+    path.setAttribute('marker-end', isSel?'url(#arrow-sel)':'url(#arrow)');
+    path.setAttribute('opacity', isSel?'0.9':'0.45');
+    edgeG.appendChild(path);
+  }
+
+  // Draw nodes
+  const nodeG = svgEl('g'); root.appendChild(nodeG);
+  for(const l of graph.layers){
+    const pos = positions[l.id];
+    if(!pos) continue;
+    const m   = getMeta(l.type);
+    const isSel = selected===l.id;
+
+    // Heatmap: override node color with heat if enabled + data exists
+    const pt = STATE.hasProfile && STATE.profile?.layers?.[l.id];
+    const heatC = (STATE.heatmapMode && pt && heatMax>-Infinity)
+      ? getHeatColor(pt.fwd_ms, heatMin, heatMax) : null;
+    const nodeC = heatC || m.c;
+
+    const g = svgEl('g');
+    g.setAttribute('data-id', l.id);
+    g.style.cursor='pointer';
+
+    // Glow ring when selected
+    if(isSel){
+      const ring=svgEl('rect');
+      ring.setAttribute('x',pos.x-4); ring.setAttribute('y',pos.y-4);
+      ring.setAttribute('width',NW+8); ring.setAttribute('height',NH+8);
+      ring.setAttribute('rx','10');
+      ring.setAttribute('fill','none');
+      ring.setAttribute('stroke',nodeC);
+      ring.setAttribute('stroke-width','2');
+      ring.setAttribute('opacity','0.4');
+      ring.setAttribute('filter','url(#glow)');
+      g.appendChild(ring);
+    }
+
+    // Main rect
+    const rect=svgEl('rect');
+    rect.setAttribute('x',pos.x); rect.setAttribute('y',pos.y);
+    rect.setAttribute('width',NW); rect.setAttribute('height',NH);
+    rect.setAttribute('rx','6');
+    rect.setAttribute('fill', isSel?nodeC+'25':'#0d1826');
+    rect.setAttribute('stroke', nodeC);
+    rect.setAttribute('stroke-width', isSel?'1.8':'0.8');
+    g.appendChild(rect);
+
+    // Timing overlay: ⏱ label in top-left when in heatmap mode and data exists
+    if(STATE.heatmapMode && pt){
+      const timeTxt=svgEl('text');
+      timeTxt.setAttribute('x',pos.x+10); timeTxt.setAttribute('y',pos.y+13);
+      timeTxt.setAttribute('fill',nodeC);
+      timeTxt.setAttribute('font-size','8');
+      timeTxt.setAttribute('font-family','JetBrains Mono, monospace');
+      timeTxt.setAttribute('font-weight','700');
+      timeTxt.setAttribute('opacity','0.9');
+      timeTxt.textContent=`⏱ ${pt.fwd_ms.toFixed(1)}ms`;
+      g.appendChild(timeTxt);
+    }
+
+    // Backend left-edge accent strip
+    // 4px wide vertical bar on the left side of the node
+    // Color = backend color (blue=CPU, green=GPU, orange=NPU, purple=AUTO)
+    const bm = l.backend || BACKEND_DEFAULT;
+    const strip = svgEl('rect');
+    strip.setAttribute('x', pos.x);
+    strip.setAttribute('y', pos.y + 6);
+    strip.setAttribute('width', '4');
+    strip.setAttribute('height', NH - 12);
+    strip.setAttribute('rx', '2');
+    strip.setAttribute('fill', bm.c);
+    strip.setAttribute('opacity', '0.85');
+    g.appendChild(strip);
+
+    // Backend chip — bottom-left corner label: "CPU" / "GPU" / "NPU"
+    const chipW = 28, chipH = 12;
+    const chip = svgEl('rect');
+    chip.setAttribute('x', pos.x + 8);
+    chip.setAttribute('y', pos.y + NH - chipH - 5);
+    chip.setAttribute('width', chipW);
+    chip.setAttribute('height', chipH);
+    chip.setAttribute('rx', '3');
+    chip.setAttribute('fill', bm.c + '22');
+    chip.setAttribute('stroke', bm.c + '66');
+    chip.setAttribute('stroke-width', '0.8');
+    g.appendChild(chip);
+    const chipTxt = svgEl('text');
+    chipTxt.setAttribute('x', pos.x + 8 + chipW / 2);
+    chipTxt.setAttribute('y', pos.y + NH - chipH - 5 + 9);
+    chipTxt.setAttribute('text-anchor', 'middle');
+    chipTxt.setAttribute('fill', bm.c);
+    chipTxt.setAttribute('font-size', '7');
+    chipTxt.setAttribute('font-family', 'JetBrains Mono, monospace');
+    chipTxt.setAttribute('font-weight', '700');
+    chipTxt.textContent = bm.label;
+    g.appendChild(chipTxt);
+
+    // Group badge top-right
+    const badge=svgEl('rect');
+    badge.setAttribute('x',pos.x+NW-38); badge.setAttribute('y',pos.y);
+    badge.setAttribute('width',38); badge.setAttribute('height',15);
+    badge.setAttribute('rx','0'); badge.setAttribute('ry','0');
+    badge.setAttribute('fill',nodeC+'25');
+    g.appendChild(badge);
+    const badgeTxt=svgEl('text');
+    badgeTxt.setAttribute('x',pos.x+NW-19); badgeTxt.setAttribute('y',pos.y+11);
+    badgeTxt.setAttribute('text-anchor','middle');
+    badgeTxt.setAttribute('fill',nodeC);
+    badgeTxt.setAttribute('font-size','8');
+    badgeTxt.setAttribute('font-family','JetBrains Mono, monospace');
+    badgeTxt.setAttribute('font-weight','700');
+    badgeTxt.textContent=m.g;
+    g.appendChild(badgeTxt);
+
+    // Layer name
+    const label=l.label.length>20?l.label.slice(0,18)+'…':l.label;
+    const labelTxt=svgEl('text');
+    labelTxt.setAttribute('x',pos.x+10);
+    labelTxt.setAttribute('y', (STATE.heatmapMode && pt) ? pos.y+30 : pos.y+30);
+    labelTxt.setAttribute('fill', isSel?nodeC:'#b8cce0');
+    labelTxt.setAttribute('font-size','11');
+    labelTxt.setAttribute('font-family','JetBrains Mono, monospace');
+    labelTxt.setAttribute('font-weight','600');
+    labelTxt.textContent=label;
+    g.appendChild(labelTxt);
+
+    // Shape label bottom-right
+    if(l.outputShape){
+      const dims=l.outputShape.slice(-3);
+      const shapeTxt=svgEl('text');
+      shapeTxt.setAttribute('x',pos.x+NW-6); shapeTxt.setAttribute('y',pos.y+NH-7);
+      shapeTxt.setAttribute('text-anchor','end');
+      shapeTxt.setAttribute('fill',nodeC);
+      shapeTxt.setAttribute('font-size','8');
+      shapeTxt.setAttribute('font-family','JetBrains Mono, monospace');
+      shapeTxt.setAttribute('opacity','0.65');
+      shapeTxt.textContent=dims.join('×');
+      g.appendChild(shapeTxt);
+    } else {
+      // Show '—' so the user knows shape wasn't inferred (not just blank)
+      const shapeTxt=svgEl('text');
+      shapeTxt.setAttribute('x',pos.x+NW-6); shapeTxt.setAttribute('y',pos.y+NH-7);
+      shapeTxt.setAttribute('text-anchor','end');
+      shapeTxt.setAttribute('fill','#2a4060');
+      shapeTxt.setAttribute('font-size','8');
+      shapeTxt.setAttribute('font-family','JetBrains Mono, monospace');
+      shapeTxt.textContent='—';
+      g.appendChild(shapeTxt);
+    }
+
+    // Weights dot indicator (green dot = bin stats loaded)
+    if(STATE.hasBin&&l.weightStats){
+      const dot=svgEl('circle');
+      dot.setAttribute('cx',pos.x+8); dot.setAttribute('cy',pos.y+NH-8);
+      dot.setAttribute('r','3');
+      dot.setAttribute('fill',m.c);
+      dot.setAttribute('opacity','0.9');
+      g.appendChild(dot);
+    }
+
+    g.addEventListener('click', e=>{ e.stopPropagation(); selectLayer(l.id===STATE.selected?null:l.id); });
+    nodeG.appendChild(g);
+  }
+
+  updateTransform();
+}
+
+function svgEl(tag){ return document.createElementNS('http://www.w3.org/2000/svg',tag); }
+
+function updateTransform(){
+  const {pan,zoom}=STATE;
+  const root=document.getElementById('graph-root');
+  const svgEl2=document.getElementById('graph-svg');
+  const W=svgEl2.clientWidth||800, H=svgEl2.clientHeight||600;
+  root.setAttribute('transform',`translate(${W/2+pan.x},${H/2+pan.y}) scale(${zoom})`);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PAN + ZOOM
+// ═══════════════════════════════════════════════════════════════
+let drag=false, last=null;
+const svg=document.getElementById('graph-svg');
+
+svg.addEventListener('mousedown', e=>{
+  if(e.target.closest('[data-id]')) return;
+  drag=true; last={x:e.clientX,y:e.clientY};
+  svg.classList.add('dragging');
+});
+window.addEventListener('mousemove', e=>{
+  if(!drag||!last) return;
+  STATE.pan.x+=e.clientX-last.x;
+  STATE.pan.y+=e.clientY-last.y;
+  last={x:e.clientX,y:e.clientY};
+  updateTransform();
+});
+window.addEventListener('mouseup',()=>{ drag=false; svg.classList.remove('dragging'); });
+svg.addEventListener('wheel', e=>{
+  e.preventDefault();
+  STATE.zoom=Math.max(0.08,Math.min(5,STATE.zoom*(e.deltaY<0?1.12:0.9)));
+  updateTransform();
+},{passive:false});
+svg.addEventListener('click', e=>{
+  if(!e.target.closest('[data-id]')) selectLayer(null);
+});
+
+// ═══════════════════════════════════════════════════════════════
+// SELECTION + DETAIL PANEL
+// ═══════════════════════════════════════════════════════════════
+function selectLayer(id){
+  STATE.selected=id;
+  renderGraph();
+  updateDetailPanel();
+  updateStatus();
+}
+
+function updateDetailPanel(){
+  const panel = document.getElementById('detail-panel');
+  const inner = document.getElementById('detail-inner');
+  const {selected,graph,hasBin,hasProfile,profile}=STATE;
+
+  if(!selected||!graph){ panel.classList.remove('open'); return; }
+
+  const l=graph.lmap[selected];
+  if(!l){ panel.classList.remove('open'); return; }
+
+  const m=getMeta(l.type);
+  const bm=l.backend||BACKEND_DEFAULT;
+  panel.classList.add('open');
+
+  const totalBytes=l.weightTensors.reduce((a,t)=>a+(t.bytes||0),0);
+  const mbStr=totalBytes?(` · ${(totalBytes/1024/1024).toFixed(2)}MB`):'';
+  const pt=hasProfile?profile?.layers?.[l.id]:null;
+
+  // ── Tab definitions ──────────────────────────────────────────
+  const tabs=[
+    {id:'layer', label:'LAYER'},
+    {id:'timing', label:'TIMING', disabled:!hasProfile},
+    {id:'memory', label:'MEMORY'},
+    {id:'grads',  label:'GRADS',  disabled:!hasBin},
+  ];
+  if(!tabs.find(t=>t.id===STATE.detailTab&&!t.disabled)) STATE.detailTab='layer';
+
+  let html=`
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
+    <div style="flex:1;min-width:0;">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
+        <div class="panel-type" style="color:${m.c};margin-bottom:0">${l.type}</div>
+        <div title="${bm.desc}" style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:4px;background:${bm.c}18;border:1px solid ${bm.c}55;font-size:10px;font-weight:700;color:${bm.c};font-family:var(--font);cursor:default;">${bm.icon} ${bm.label}</div>
+      </div>
+      <div class="panel-name" style="color:#dde6f0;font-family:var(--font)">${l.fullName}</div>
+    </div>
+    <button class="close-btn" onclick="selectLayer(null)">✕</button>
+  </div>
+  <div class="tab-row">${tabs.map(t=>`<button class="tab-btn${STATE.detailTab===t.id?' active':''}${t.disabled?' disabled':''}" style="${t.disabled?'opacity:0.3;cursor:not-allowed;':''}" onclick="${t.disabled?'':`switchTab('${t.id}')`}">${t.label}</button>`).join('')}</div>`;
+
+  // ════════════════ TAB: LAYER ═══════════════════════════
+  if(STATE.detailTab==='layer'){
+    // Output shape
+    const shapeStr=l.outputShape?'[ '+l.outputShape.map(d=>d==='?'?'?':d).join(' × ')+' ]':'—';
+    html+=`<div class="card">
+      <div class="card-label">OUTPUT SHAPE</div>
+      <div class="card-value" style="color:${l.outputShape?m.c:'var(--muted)'}">${shapeStr}</div>
+      ${l.outputShape?'<span class="dtype-badge">FP32</span>':'<span style="font-size:10px;color:var(--muted)">add input_shape= to INPUT layer</span>'}
+    </div>`;
+
+    // Connections
+    if(l.inputs.length||l.outputs.length){
+      html+=`<div class="card"><div class="card-label">CONNECTIONS</div>`;
+      for(const inp of l.inputs){ const im=getMeta(graph.lmap[inp]?.type); html+=`<div class="conn-item">← <span style="color:${im.c}">${inp}</span></div>`; }
+      for(const out of l.outputs){ const om=getMeta(graph.lmap[out]?.type); html+=`<div class="conn-item">→ <span style="color:${om.c}">${out}</span></div>`; }
+      html+=`</div>`;
+    }
+
+    // Config
+    const configEntries=Object.entries(l.props).filter(([k])=>k!=='type');
+    if(configEntries.length){
+      html+=`<div class="card"><div class="card-label">LAYER CONFIG</div>`;
+      for(const [k,v] of configEntries) html+=`<div class="param-row"><span class="param-key">${k}</span><span class="param-val">${v}</span></div>`;
+      html+=`</div>`;
+    }
+
+    // Weight tensors + histograms
+    if(l.weightTensors.length){
+      html+=`<div class="card"><div class="card-label">WEIGHT TENSORS${mbStr}</div>`;
+      for(let i=0;i<l.weightTensors.length;i++){
+        const t=l.weightTensors[i];
+        const stats=l.weightStats?l.weightStats[i]:null;
+        html+=`<div class="hist-wrap">
+          <div class="tensor-name" style="color:${m.c}">${t.name}</div>
+          <div class="tensor-shape">[${t.shape.join(', ')}]${t.bytes?' · '+(t.bytes/1024/1024).toFixed(3)+'MB':''}</div>`;
+        if(stats){
+          html+=`<canvas id="hist-${l.id}-${i}" width="250" height="54" style="display:block;border-radius:4px;background:#050a14;"></canvas>
+          <div class="stat-grid">
+            <div class="stat-item"><span class="stat-key">min</span><span class="stat-val">${stats.min.toFixed(5)}</span></div>
+            <div class="stat-item"><span class="stat-key">max</span><span class="stat-val">${stats.max.toFixed(5)}</span></div>
+            <div class="stat-item"><span class="stat-key">mean</span><span class="stat-val">${stats.mean.toFixed(5)}</span></div>
+            <div class="stat-item"><span class="stat-key">std</span><span class="stat-val">${stats.std.toFixed(5)}</span></div>
+          </div>
+          <div class="stat-count">${stats.count.toLocaleString()} parameters</div>`;
+        } else {
+          html+=`<div style="font-size:10px;color:var(--muted);padding:6px 0;">${hasBin?'⚠ stats unavailable':'📂 load .bin to see histograms'}</div>`;
+        }
+        html+=`</div>`;
+      }
+      if(!hasBin) html+=`<div style="margin-top:8px;padding:8px;background:#1a3050;border-radius:4px;font-size:10px;color:#5b8db8;text-align:center;">Click <strong style="color:#60a5fa">"Load .bin Weights…"</strong> to see histograms</div>`;
+      html+=`</div>`;
+    } else if(!['INPUT','OUTPUT','ADDITION','MULTIPLY','CONCAT','SPLIT','RELU','SILU','GELU','SIGMOID','TANH','SWIGLU','ACTIVATION','FLATTEN','RESHAPE','DROPOUT'].includes(l.type)){
+      html+=`<div class="card"><div class="card-label">WEIGHT TENSORS</div><div style="font-size:10px;color:var(--muted);padding:4px 0;">Could not determine tensor shapes — check input_shape= on INPUT layer</div></div>`;
+    }
+  }
+
+  // ════════════════ TAB: TIMING ══════════════════════════
+  if(STATE.detailTab==='timing'){
+    if(!pt){
+      html+=`<div class="card"><div style="font-size:10px;color:var(--muted);padding:8px 0;">No profile data for this layer.<br><br>Load a profile JSON using the <strong style="color:#60a5fa">Load Profile…</strong> button, or see the C++ patch below for how to generate one.</div></div>`;
+    } else {
+      const fwdColor='#22d3ee', bwdColor='#818cf8';
+      const totalMs=(pt.fwd_ms||0)+(pt.bwd_ms||0);
+      const modelFwd=profile.total_fwd_ms||1;
+      const modelBwd=profile.total_bwd_ms||1;
+      html+=`<div class="card">
+        <div class="card-label">FORWARD PASS</div>
+        <div class="time-value" style="color:${fwdColor};margin-bottom:8px;">${(pt.fwd_ms||0).toFixed(3)} <span style="font-size:12px">ms</span></div>
+        <div class="mem-row">
+          <div class="mem-row-key">% of model fwd</div>
+          <div class="mem-bar-track"><div class="mem-bar-fill" style="width:${Math.min(100,((pt.fwd_ms||0)/modelFwd*100)).toFixed(1)}%;background:${fwdColor};"></div></div>
+          <div class="mem-row-val">${((pt.fwd_ms||0)/modelFwd*100).toFixed(1)}%</div>
+        </div>
+      </div>`;
+      if(pt.bwd_ms!==undefined){
+        html+=`<div class="card">
+          <div class="card-label">BACKWARD PASS</div>
+          <div class="time-value" style="color:${bwdColor};margin-bottom:8px;">${pt.bwd_ms.toFixed(3)} <span style="font-size:12px">ms</span></div>
+          <div class="mem-row">
+            <div class="mem-row-key">% of model bwd</div>
+            <div class="mem-bar-track"><div class="mem-bar-fill" style="width:${Math.min(100,(pt.bwd_ms/modelBwd*100)).toFixed(1)}%;background:${bwdColor};opacity:0.7;"></div></div>
+            <div class="mem-row-val">${(pt.bwd_ms/modelBwd*100).toFixed(1)}%</div>
+          </div>
+        </div>`;
+      }
+      html+=`<div class="card">
+        <div class="card-label">SUMMARY</div>
+        <div class="param-row"><span class="param-key">fwd + bwd total</span><span class="param-val">${totalMs.toFixed(3)} ms</span></div>
+        ${pt.calls!==undefined?`<div class="param-row"><span class="param-key">call count</span><span class="param-val">${pt.calls}</span></div>`:''}
+        ${pt.fwd_ms&&pt.calls?`<div class="param-row"><span class="param-key">avg per call</span><span class="param-val">${(pt.fwd_ms/pt.calls).toFixed(3)} ms</span></div>`:''}
+      </div>`;
+    }
+  }
+
+  // ════════════════ TAB: MEMORY ══════════════════════════
+  if(STATE.detailTab==='memory'){
+    const mem=estimateMemory(l);
+    const peakFromProfile=pt?.peak_mem_bytes;
+    const displayMem=peakFromProfile||mem.total;
+    const maxMem=10*1024*1024; // scale against 10 MB
+
+    html+=`<div class="card">
+      <div class="card-label">MEMORY BREAKDOWN${peakFromProfile?'<span style="color:#34d399;margin-left:6px;font-size:7px;">● profiled</span>':' <span style="color:#f59e0b;margin-left:6px;font-size:7px;">◎ estimated</span>'}</div>`;
+
+    if(peakFromProfile){
+      html+=`<div class="param-row"><span class="param-key">peak (profiled)</span><span class="param-val" style="color:#34d399">${fmtBytes(peakFromProfile)}</span></div>`;
+    }
+    const bars=[
+      {label:'Weights',   val:mem.wBytes, color:'#22d3ee'},
+      {label:'Activations',val:mem.aBytes,color:'#34d399'},
+      {label:'Gradients', val:mem.gBytes, color:'#818cf8'},
+    ];
+    for(const b of bars){
+      const pct=Math.min(100,(b.val/Math.max(displayMem,1,maxMem)*100)).toFixed(1);
+      html+=`<div class="mem-row" style="margin-top:6px;">
+        <div class="mem-row-key">${b.label}</div>
+        <div class="mem-bar-track"><div class="mem-bar-fill" style="width:${pct}%;background:${b.color};"></div></div>
+        <div class="mem-row-val" style="color:${b.color}">${fmtBytes(b.val)}</div>
+      </div>`;
+    }
+    html+=`<div class="param-row" style="margin-top:8px;border-top:1px solid #0a1520;padding-top:8px;">
+      <span class="param-key">total estimate</span>
+      <span class="param-val">${fmtBytes(mem.total)}</span>
+    </div></div>`;
+
+    if(!l.outputShape){
+      html+=`<div style="font-size:9px;color:#f59e0b;padding:4px 0;">⚠ Activation estimate unavailable — set input_shape= on INPUT layer</div>`;
+    }
+    html+=`<div style="font-size:9px;color:var(--muted);margin-top:4px;line-height:1.8;">
+      Estimates assume FP32. Actual runtime memory may differ due to workspace buffers, quantisation, and im2col.
+    </div>`;
+  }
+
+  // ════════════════ TAB: GRADS ═══════════════════════════
+  if(STATE.detailTab==='grads'){
+    if(!l.weightStats){
+      html+=`<div class="card"><div style="font-size:10px;color:var(--muted);padding:8px 0;">Load a <strong style="color:#60a5fa">.bin weights file</strong> to see gradient norm proxies (L2 norm &amp; RMS norm computed from weight tensors).</div></div>`;
+    } else {
+      html+=`<div class="card"><div class="card-label">WEIGHT NORMS (gradient proxy)</div>`;
+      for(let i=0;i<l.weightTensors.length;i++){
+        const t=l.weightTensors[i];
+        const s=l.weightStats[i];
+        if(!s) continue;
+        const healthColor=s.std>2?'#ef4444':s.std>0.5?'#f59e0b':'#34d399';
+        const healthLabel=s.std>2?'HIGH':'OK';
+        html+=`<div class="norm-row">
+          <span class="norm-key">${t.name}</span>
+          <div class="norm-vals">
+            <span class="norm-chip" style="color:#22d3ee;border-color:#22d3ee44;background:#22d3ee11;">L2 ${s.l2Norm!==undefined?s.l2Norm.toFixed(3):'—'}</span>
+            <span class="norm-chip" style="color:#818cf8;border-color:#818cf844;background:#818cf811;">RMS ${s.rmsNorm!==undefined?s.rmsNorm.toFixed(4):'—'}</span>
+            <span class="norm-chip" style="color:${healthColor};border-color:${healthColor}44;background:${healthColor}11;">σ=${s.std.toFixed(3)}</span>
+          </div>
+        </div>`;
+      }
+      html+=`</div>`;
+      html+=`<div style="font-size:9px;color:var(--muted);margin-top:4px;line-height:1.8;">
+        L2 norm and RMS norm are computed from weight tensors. High σ may indicate training instability or exploding gradients.
+      </div>`;
+
+      // Saturation check
+      const saturated=l.weightStats.filter(s=>s&&Math.abs(s.max)>100).length;
+      if(saturated>0){
+        html+=`<div style="margin-top:8px;padding:8px;background:#7f1d1d33;border:1px solid #ef444444;border-radius:4px;font-size:9px;color:#fca5a5;">
+          ⚠ ${saturated} tensor(s) have |max| &gt; 100 — possible gradient explosion or uninitialised weights.
+        </div>`;
+      }
+    }
+  }
+
+  inner.innerHTML=html;
+
+  // Draw histograms on canvases (LAYER tab only)
+  if(STATE.detailTab==='layer'&&l.weightStats){
+    for(let i=0;i<l.weightTensors.length;i++){
+      const stats=l.weightStats[i];
+      if(!stats) continue;
+      const canvas=document.getElementById(`hist-${l.id}-${i}`);
+      if(!canvas) continue;
+      const ctx=canvas.getContext('2d');
+      const W=canvas.width,H=canvas.height;
+      const BINS=stats.hist.length;
+      const maxV=Math.max(...stats.hist,1);
+      const bw=W/BINS;
+      ctx.fillStyle='#050a14'; ctx.fillRect(0,0,W,H);
+      ctx.fillStyle=m.c+'bb';
+      for(let b=0;b<BINS;b++){
+        const bh=(stats.hist[b]/maxV)*(H-2);
+        ctx.fillRect(b*bw+0.5,H-bh-1,bw-1,bh);
+      }
+    }
+  }
+}
+
+function switchTab(id){
+  STATE.detailTab=id;
+  updateDetailPanel();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PROFILER DRAWER
+// ═══════════════════════════════════════════════════════════════
+function toggleProfilerDrawer(){
+  const drawer=document.getElementById('profiler-drawer');
+  drawer.classList.toggle('open');
+  const btn=document.getElementById('btn-collapse-profiler');
+  btn.textContent=drawer.classList.contains('open')? '▼ collapse':'▲ expand';
+}
+
+function renderProfilerDrawer(){
+  const p=STATE.profile;
+  if(!p) return;
+
+  // ── Summary strip ────────────────────────────────────────────
+  const summaryEl=document.getElementById('prof-summary');
+  const kv=(val,key)=>`<div class="prof-kv"><div class="prof-kv-val">${val}</div><div class="prof-kv-key">${key}</div></div>`;
+  const throughput=p.throughput_samples_per_sec
+    ? (p.throughput_samples_per_sec>=1000
+        ? (p.throughput_samples_per_sec/1000).toFixed(1)+'K'
+        : p.throughput_samples_per_sec.toFixed(0))
+    : '—';
+  summaryEl.innerHTML=`
+    ${p.total_fwd_ms!==undefined?kv(p.total_fwd_ms.toFixed(1)+'ms','TOTAL FWD'):''}
+    ${p.total_bwd_ms!==undefined?kv(p.total_bwd_ms.toFixed(1)+'ms','TOTAL BWD'):''}
+    ${p.throughput_samples_per_sec!==undefined?kv(throughput,'SAMPLES/SEC'):''}
+    ${p.batch_size!==undefined?kv(p.batch_size,'BATCH SIZE'):''}
+    ${p.iterations!==undefined?kv(p.iterations,'ITERS'):''}`;
+
+  // ── Throughput in topbar ──────────────────────────────────────
+  if(p.throughput_samples_per_sec){
+    const tb=document.getElementById('tb-throughput');
+    tb.textContent=`⚡ ${throughput} samples/s`;
+    tb.style.display='';
+  }
+
+  // ── Timing bars ───────────────────────────────────────────────
+  const barsEl=document.getElementById('timing-bars');
+  barsEl.innerHTML='';
+
+  if(!p.layers||!STATE.graph) return;
+
+  // Compute max fwd time for bar scaling
+  const fwdTimes=STATE.graph.layers.map(l=>p.layers[l.id]?.fwd_ms||0);
+  const bwdTimes=STATE.graph.layers.map(l=>p.layers[l.id]?.bwd_ms||0);
+  const maxFwd=Math.max(...fwdTimes,0.001);
+  const maxBwd=Math.max(...bwdTimes,0.001);
+  const globalMax=Math.max(maxFwd,maxBwd);
+
+  const legend=document.createElement('div');
+  legend.style.cssText='display:flex;gap:12px;padding:4px 0 8px;margin-left:146px;';
+  legend.innerHTML=`
+    <span style="font-size:8px;color:#22d3ee;"><span style="display:inline-block;width:10px;height:4px;background:#22d3ee;border-radius:1px;vertical-align:middle;margin-right:4px;"></span>Forward</span>
+    <span style="font-size:8px;color:#818cf8;"><span style="display:inline-block;width:10px;height:4px;background:#818cf8;border-radius:1px;vertical-align:middle;margin-right:4px;opacity:0.55;"></span>Backward</span>`;
+  barsEl.appendChild(legend);
+
+  for(let i=0;i<STATE.graph.layers.length;i++){
+    const l=STATE.graph.layers[i];
+    const pt=p.layers[l.id];
+    if(!pt) continue;
+
+    const fwdPct=Math.max(2,(pt.fwd_ms||0)/globalMax*100).toFixed(1);
+    const bwdPct=Math.max(0,(pt.bwd_ms||0)/globalMax*100).toFixed(1);
+
+    const row=document.createElement('div');
+    row.className='timing-row';
+
+    const lbl=document.createElement('div');
+    lbl.className='timing-label';
+    lbl.textContent=l.label.length>18?l.label.slice(0,16)+'…':l.label;
+    lbl.title=l.fullName;
+    lbl.addEventListener('click',()=>selectLayer(l.id));
+
+    const barsCol=document.createElement('div');
+    barsCol.className='timing-bars-col';
+
+    const fwdTrack=document.createElement('div'); fwdTrack.className='timing-bar-track';
+    const fwdBar  =document.createElement('div'); fwdBar.className='timing-bar-fwd';
+    fwdBar.style.cssText=`width:${fwdPct}%;background:#22d3ee;`;
+    fwdTrack.appendChild(fwdBar); barsCol.appendChild(fwdTrack);
+
+    if(pt.bwd_ms!==undefined){
+      const bwdTrack=document.createElement('div'); bwdTrack.className='timing-bar-track';
+      const bwdBar  =document.createElement('div'); bwdBar.className='timing-bar-bwd';
+      bwdBar.style.cssText=`width:${bwdPct}%;background:#818cf8;`;
+      bwdTrack.appendChild(bwdBar); barsCol.appendChild(bwdTrack);
+    }
+
+    const val=document.createElement('div');
+    val.className='timing-val';
+    val.textContent=`${(pt.fwd_ms||0).toFixed(2)}ms`;
+
+    row.appendChild(lbl); row.appendChild(barsCol); row.appendChild(val);
+    barsEl.appendChild(row);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SIDEBAR
+// ═══════════════════════════════════════════════════════════════
+function updateSidebar(){
+  const {graph,hasBin}=STATE;
+  const legendList  = document.getElementById('legend-list');
+  const modelInfo   = document.getElementById('model-info');
+
+  const typeCounts={};
+  for(const l of graph.layers){
+    const k=l.type; typeCounts[k]=(typeCounts[k]||0)+1;
+  }
+
+  legendList.innerHTML='';
+  for(const [type,cnt] of Object.entries(typeCounts)){
+    const m=getMeta(type);
+    legendList.innerHTML+=`
+      <div class="legend-item">
+        <div class="legend-dot" style="background:${m.c};box-shadow:0 0 5px ${m.c}55"></div>
+        <span class="legend-label">${type.replace(/_/g,' ')}</span>
+        <span class="legend-count" style="color:${m.c}">${cnt}</span>
+      </div>`;
+  }
+
+  // ── Backend distribution section ──────────────────────────────
+  // Count how many layers run on each backend
+  const backendCounts = {};
+  for (const l of graph.layers) {
+    const key = l.backend?.label || 'CPU';
+    backendCounts[key] = (backendCounts[key]||0) + 1;
+  }
+  // Only show section if there's more than 1 backend present,
+  // OR always show it so the user knows what backend each layer uses
+  legendList.innerHTML += `<div style="margin-top:14px;padding-top:10px;border-top:1px solid #1a3050;">
+    <div style="font-size:9px;font-weight:700;color:#475569;letter-spacing:0.08em;margin-bottom:6px;">BACKENDS</div>`;
+  for (const [label, cnt] of Object.entries(backendCounts)) {
+    const bm = Object.values(BACKEND_META).find(b=>b.label===label) || BACKEND_DEFAULT;
+    legendList.innerHTML += `
+      <div class="legend-item" title="${bm.desc}">
+        <div style="width:10px;height:10px;border-radius:2px;background:${bm.c};flex-shrink:0;box-shadow:0 0 5px ${bm.c}55"></div>
+        <span class="legend-label">${bm.icon} ${label}</span>
+        <span class="legend-count" style="color:${bm.c}">${cnt}</span>
+      </div>`;
+  }
+  legendList.innerHTML += `</div>`;
+
+  const totalBytes=graph.layers.reduce((a,l)=>a+l.weightTensors.reduce((b,t)=>b+(t.bytes||0),0),0);
+  modelInfo.innerHTML=`
+    <div class="info-row">Layers <span style="color:var(--accent)">${graph.layers.length}</span></div>
+    ${graph.totalParams>0?`<div class="info-row">Params <span style="color:#818cf8">~${(graph.totalParams/1e6).toFixed(1)}M</span></div>`:''}
+    ${totalBytes>0?`<div class="info-row">Weights <span style="color:#34d399">${(totalBytes/1024/1024).toFixed(0)}MB</span></div>`:''}
+    <div class="info-row">Bin <span style="color:${hasBin?'#34d399':'#2a4060'}">${hasBin?'✓ loaded':'—'}</span></div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOPBAR
+// ═══════════════════════════════════════════════════════════════
+function updateTopbar(){
+  const {graph,hasBin}=STATE;
+  document.getElementById('tb-sep1').style.display='';
+  document.getElementById('tb-layers').textContent=`${graph.layers.length} layers`;
+  document.getElementById('tb-layers').style.display='';
+  if(graph.totalParams>0){
+    document.getElementById('tb-sep2').style.display='';
+    document.getElementById('tb-params').textContent=`~${(graph.totalParams/1e6).toFixed(1)}M params`;
+    document.getElementById('tb-params').style.display='';
+  }
+  if(hasBin){
+    document.getElementById('tb-bin-badge').style.display='';
+    document.getElementById('btn-pick-bin').style.display='none';
+  } else {
+    document.getElementById('btn-pick-bin').style.display='';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// STATUS BAR
+// ═══════════════════════════════════════════════════════════════
+function updateStatus(){
+  const {selected,graph}=STATE;
+  const sl=document.getElementById('status-left');
+  const sr=document.getElementById('status-right');
+  if(selected&&graph){
+    const l=graph.lmap[selected];
+    const m=getMeta(l?.type);
+    sl.innerHTML=`<span class="status-selected">● ${l?.fullName}</span> — ${m.g}`;
+    sr.textContent=l?.weightTensors.length?`${l.weightTensors.length} tensor(s)`:'';
+  } else {
+    sl.textContent='Click any node to inspect · Scroll to zoom · Drag to pan';
+    sr.textContent='';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BIN BUTTON HANDLERS
+// ═══════════════════════════════════════════════════════════════
+document.getElementById('btn-pick-bin').addEventListener('click', ()=>{
+  if(!STATE.graph) return;
+  vscode.postMessage({ type:'PICK_BIN', layers: STATE.graph.layers });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// MESSAGE HANDLER: extension.js → webview
+// ═══════════════════════════════════════════════════════════════
+window.addEventListener('message', e=>{
+  const msg=e.data;
+  switch(msg.type){
+
+    case 'INI_TEXT': {
+      // Parse the .ini text, build graph, render
+      document.getElementById('tb-filename').textContent=msg.data.fileName;
+      try {
+        const sections  = parseINI(msg.data.text);
+        const graph     = buildGraph(sections);
+        const positions = layoutGraph(graph.layers);
+        STATE.graph     = graph;
+        STATE.positions = positions;
+        STATE.selected  = null;
+        STATE.hasBin    = false;
+
+        // Switch from loading screen to main UI
+        document.getElementById('loading').style.display='none';
+        document.getElementById('main').style.display='flex';
+        document.getElementById('statusbar').style.display='flex';
+
+        renderGraph();
+        updateTopbar();
+        updateSidebar();
+        updateStatus();
+      } catch(err){
+        showError('Failed to parse .ini: '+err.message);
+      }
+      break;
+    }
+
+    case 'BIN_START': {
+      document.getElementById('tb-filename').textContent =
+        `Loading ${msg.data.fileName}…`;
+      document.getElementById('progress-wrap').classList.add('show');
+      break;
+    }
+
+    case 'BIN_PROGRESS': {
+      const wrap=document.getElementById('progress-wrap');
+      wrap.classList.add('show');
+      document.getElementById('progress-bar-fill').style.width=msg.data.pct+'%';
+      document.getElementById('progress-label').textContent=msg.data.layerName;
+      document.getElementById('progress-pct').textContent=msg.data.pct+'%';
+      // Show a progress overlay on topbar
+      document.getElementById('tb-filename').textContent=
+        `Loading weights… ${msg.data.pct}%`;
+      break;
+    }
+
+    case 'BIN_LOADED': {
+      const {stats,fileName}=msg.data;
+      // Attach stats to layers
+      for(const l of STATE.graph.layers){
+        if(stats[l.id]) l.weightStats=stats[l.id];
+      }
+      STATE.hasBin=true;
+      document.getElementById('tb-filename').textContent=
+        document.getElementById('tb-filename').textContent.split('|')[0].trim();
+
+      // Re-render with stats
+      renderGraph();
+      updateTopbar();
+      updateSidebar();
+      if(STATE.selected) updateDetailPanel();
+
+      // Update topbar filename back
+      const iniName=STATE.graph.meta[''] || 'model';
+      document.getElementById('tb-bin-badge').style.display='';
+      break;
+    }
+
+    case 'ERROR': {
+      showError(msg.data.message);
+      break;
+    }
+
+    case 'PROFILE_LOADED': {
+      STATE.profile    = msg.data;
+      STATE.hasProfile = true;
+      // Show profiler controls in topbar
+      document.getElementById('tb-profile-badge').style.display='';
+      document.getElementById('btn-heatmap').style.display='';
+      document.getElementById('btn-toggle-profiler').style.display='';
+      // Open the profiler drawer
+      document.getElementById('profiler-drawer').classList.add('open');
+      renderProfilerDrawer();
+      // Re-render graph so heatmap mode can be toggled
+      renderGraph();
+      if(STATE.selected) updateDetailPanel();
+      break;
+    }
+  }
+});
+
+function showError(msg){
+  document.getElementById('loading').innerHTML=`
+    <div style="color:#ef4444;font-size:13px;font-family:var(--font);padding:20px;text-align:center;max-width:500px;">
+      <div style="font-size:20px;margin-bottom:12px;">⚠</div>
+      ${msg}
+    </div>`;
+}
+
+document.getElementById('btn-pick-profile').addEventListener('click', ()=>{
+  vscode.postMessage({ type:'PICK_PROFILE' });
+});
+
+document.getElementById('btn-heatmap').addEventListener('click', ()=>{
+  STATE.heatmapMode=!STATE.heatmapMode;
+  const btn=document.getElementById('btn-heatmap');
+  btn.textContent=STATE.heatmapMode?'◨ Heatmap ON':'☀ Heatmap';
+  btn.style.background=STATE.heatmapMode?'#22d3ee18':'';
+  btn.style.borderColor=STATE.heatmapMode?'#22d3ee':'';
+  btn.style.color=STATE.heatmapMode?'#22d3ee':'';
+  renderGraph();
+});
+
+document.getElementById('btn-toggle-profiler').addEventListener('click', ()=>{
+  toggleProfilerDrawer();
+});
+
+// ═══════════════════════════════════════════════════════════════
+// READY — tell extension.js we're ready to receive data
+// ═══════════════════════════════════════════════════════════════
+vscode.postMessage({ type: 'READY' });
+</script>
+</body>
+</html>
